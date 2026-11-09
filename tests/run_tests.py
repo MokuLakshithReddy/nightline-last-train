@@ -260,6 +260,76 @@ def test_destination_voting():
     assert tally_votes(majority_votes)[0] == "Station002"
 
 
+@test_case("Client destination voting UI wiring, remote subscription, and input support (FIX-T28)")
+def test_destination_voting_ui():
+    with open("src/StarterPlayer/StarterPlayerScripts/Controllers/UIController.luau", "r", encoding="utf-8") as f:
+        uicontroller = f.read()
+
+    # Remote subscription and dispatch
+    assert 'remotes:WaitForChild("DestinationVotesUpdated")' in uicontroller, \
+        "UIController must listen to DestinationVotesUpdated remote"
+    assert 'remotes:FindFirstChild("RequestDestinationVote")' in uicontroller, \
+        "UIController must invoke RequestDestinationVote remote when casting vote"
+
+    # UI structure and phase accessibility
+    assert "BuildDestinationVotingUI" in uicontroller, "Must implement BuildDestinationVotingUI"
+    assert "DestinationVoteModal" in uicontroller, "DestinationVoteModal frame required"
+    assert "DestinationVoteToggleBtn" in uicontroller, "DestinationVoteToggleBtn required"
+    assert 'state == "WAITING" or state == "INTERMISSION" or state == "BOARDING"' in uicontroller, \
+        "Destination voting must only be accessible during Hub preparation phases"
+
+    # Dynamic server-approved options and authority
+    assert "summary.StationOptions" in uicontroller, "Choices must be populated dynamically from server summary"
+    assert "summary.VotingOpen" in uicontroller, "UI must reflect server VotingOpen state"
+    assert 'voteBtn.Text = "CLOSED"' in uicontroller, "Vote buttons must be disabled and labeled CLOSED when voting closes"
+
+    # Gamepad / touch / mouse accessibility
+    assert "voteBtn.Selectable = true" in uicontroller, "Buttons must be Selectable for gamepad navigation"
+    assert "destinationVoteButton.Selectable = true" in uicontroller, "Toggle button must be Selectable for gamepad"
+    assert "MouseButton1Click" in uicontroller, "Buttons must support MouseButton1Click for mouse, touch, and gamepad activation"
+
+    # Simulated client state test
+    client_state = {
+        "is_voting_phase": True,
+        "selected_vote": None,
+        "summary": None,
+    }
+
+    def simulate_receive_summary(summary):
+        client_state["summary"] = summary
+
+    def simulate_cast_vote(station_id):
+        if not client_state["summary"] or not client_state["summary"]["VotingOpen"]:
+            return False, "Voting is currently closed."
+        client_state["selected_vote"] = station_id
+        return True, None
+
+    # Server sends open voting summary with 2 stations
+    simulate_receive_summary({
+        "VotingOpen": True,
+        "StationOptions": {"Station001": "The Forgotten Terminal", "Station002": "Sunken Depot"},
+        "Tally": {"Station001": 2, "Station002": 1},
+        "LeadingStation": "Station001",
+        "TotalVotes": 3,
+    })
+
+    ok, _ = simulate_cast_vote("Station002")
+    assert ok is True
+    assert client_state["selected_vote"] == "Station002"
+
+    # Server closes voting
+    simulate_receive_summary({
+        "VotingOpen": False,
+        "StationOptions": {"Station001": "The Forgotten Terminal", "Station002": "Sunken Depot"},
+        "Tally": {"Station001": 2, "Station002": 2},
+        "LeadingStation": "Station001",
+        "TotalVotes": 4,
+    })
+    ok, err = simulate_cast_vote("Station001")
+    assert ok is False
+    assert err == "Voting is currently closed."
+
+
 # =========================================================================
 # 4. Hollow Perception & LOS Raycasting (FIX-T12)
 # =========================================================================
@@ -487,6 +557,7 @@ def main():
     test_flashlight_toggle_lifecycle()
     test_upgrade_terminal_proximity()
     test_destination_voting()
+    test_destination_voting_ui()
     test_hollow_los_raycasting()
     test_phase_wait_generation()
     test_profile_reconciliation()

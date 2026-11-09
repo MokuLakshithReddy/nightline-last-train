@@ -35,8 +35,18 @@ local scrapBalanceLabel: TextLabel? = nil
 local artifactCountLabel: TextLabel? = nil
 local upgradeListContainer: ScrollingFrame? = nil
 
+-- Destination Voting Elements
+local destinationVoteButton: TextButton? = nil
+local destinationVoteFrame: Frame? = nil
+local voteStatusLabel: TextLabel? = nil
+local voteSummaryLabel: TextLabel? = nil
+local stationListContainer: ScrollingFrame? = nil
+
 local currentPhaseEndsAt: number = 0
 local cachedProfile: GameTypes.PlayerProfile? = nil
+local mySelectedVote: string? = nil
+local latestVoteSummary: { [string]: any }? = nil
+local isVotingPhase: boolean = false
 
 local function formatTime(seconds: number): string
 	local s = math.max(0, math.floor(seconds))
@@ -49,6 +59,7 @@ function UIController.Init()
 	log:Info("Initializing responsive HUD and Upgrade Shop...")
 	UIController.BuildHUD()
 	UIController.BuildUpgradeShop()
+	UIController.BuildDestinationVotingUI()
 
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local roundStateRemote = remotes:WaitForChild("RoundStateChanged") :: RemoteEvent
@@ -56,6 +67,7 @@ function UIController.Init()
 	local notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
 	local inventoryRemote = remotes:WaitForChild("InventoryUpdated") :: RemoteEvent
 	local profileRemote = remotes:WaitForChild("ProfileUpdated") :: RemoteEvent
+	local destinationVotesRemote = remotes:WaitForChild("DestinationVotesUpdated") :: RemoteEvent
 
 	roundStateRemote.OnClientEvent:Connect(function(state: string, _serverTime: number, phaseEndsAt: number, _stationId: string)
 		currentPhaseEndsAt = phaseEndsAt
@@ -76,12 +88,25 @@ function UIController.Init()
 			objectiveFrame.Visible = (state == "EXPLORATION" or state == "EXTRACTION")
 		end
 
-		-- Automatically close shop when departure/travel occurs
-		if state == "TRAVEL" or state == "EXPLORATION" then
+		local inPrep = (state == "WAITING" or state == "INTERMISSION" or state == "BOARDING")
+		isVotingPhase = inPrep
+		if destinationVoteButton then
+			destinationVoteButton.Visible = inPrep
+		end
+
+		-- Automatically close shop and voting modals when departure/travel occurs
+		if not inPrep then
 			if upgradeShopFrame then
 				upgradeShopFrame.Visible = false
 			end
+			if destinationVoteFrame then
+				destinationVoteFrame.Visible = false
+			end
 		end
+	end)
+
+	destinationVotesRemote.OnClientEvent:Connect(function(summary: { [string]: any })
+		UIController.UpdateDestinationVotes(summary)
 	end)
 
 	objectiveRemote.OnClientEvent:Connect(function(objectiveId: string, progress: number, targetProgress: number, isComplete: boolean)
@@ -578,6 +603,321 @@ function UIController.BuildUpgradeShop()
 			end)
 		end
 	end
+end
+
+function UIController.BuildDestinationVotingUI()
+	if not mainScreenGui then return end
+
+	-- Top-Right Destination Voting Toggle Pill
+	destinationVoteButton = Instance.new("TextButton")
+	destinationVoteButton.Name = "DestinationVoteToggleBtn"
+	destinationVoteButton.AnchorPoint = Vector2.new(1, 0)
+	destinationVoteButton.Position = UDim2.new(1, -20, 0, 16)
+	destinationVoteButton.Size = UDim2.fromOffset(170, 36)
+	destinationVoteButton.BackgroundColor3 = Color3.fromRGB(24, 28, 38)
+	destinationVoteButton.Font = Enum.Font.GothamBold
+	destinationVoteButton.Text = "DESTINATION [VOTE]"
+	destinationVoteButton.TextColor3 = Color3.fromRGB(240, 205, 90)
+	destinationVoteButton.TextSize = 12
+	destinationVoteButton.Active = true
+	destinationVoteButton.Selectable = true
+	destinationVoteButton.Visible = isVotingPhase
+	destinationVoteButton.Parent = mainScreenGui
+
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 8)
+	btnCorner.Parent = destinationVoteButton
+
+	local btnStroke = Instance.new("UIStroke")
+	btnStroke.Color = Color3.fromRGB(60, 70, 90)
+	btnStroke.Thickness = 1.5
+	btnStroke.Parent = destinationVoteButton
+
+	destinationVoteButton.MouseButton1Click:Connect(function()
+		local cur = destinationVoteFrame and destinationVoteFrame.Visible or false
+		UIController.ToggleDestinationVoting(not cur)
+	end)
+
+	-- Destination Voting Modal Frame
+	destinationVoteFrame = Instance.new("Frame")
+	destinationVoteFrame.Name = "DestinationVoteModal"
+	destinationVoteFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	destinationVoteFrame.Position = UDim2.fromScale(0.5, 0.5)
+	destinationVoteFrame.Size = UDim2.fromOffset(480, 350)
+	destinationVoteFrame.BackgroundColor3 = Color3.fromRGB(18, 22, 28)
+	destinationVoteFrame.BorderSizePixel = 0
+	destinationVoteFrame.Visible = false
+	destinationVoteFrame.ZIndex = 20
+	destinationVoteFrame.Parent = mainScreenGui
+
+	local modalCorner = Instance.new("UICorner")
+	modalCorner.CornerRadius = UDim.new(0, 10)
+	modalCorner.Parent = destinationVoteFrame
+
+	local modalStroke = Instance.new("UIStroke")
+	modalStroke.Color = Color3.fromRGB(70, 90, 120)
+	modalStroke.Thickness = 2
+	modalStroke.Parent = destinationVoteFrame
+
+	-- Modal Header
+	local header = Instance.new("TextLabel")
+	header.Name = "Header"
+	header.Position = UDim2.fromOffset(20, 14)
+	header.Size = UDim2.new(1, -80, 0, 24)
+	header.BackgroundTransparency = 1
+	header.Font = Enum.Font.GothamBold
+	header.Text = "EXPEDITION DESTINATION VOTE"
+	header.TextColor3 = Color3.fromRGB(240, 205, 90)
+	header.TextSize = 17
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.ZIndex = 21
+	header.Parent = destinationVoteFrame
+
+	-- Close Button (X)
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Name = "CloseBtn"
+	closeBtn.AnchorPoint = Vector2.new(1, 0)
+	closeBtn.Position = UDim2.new(1, -16, 0, 14)
+	closeBtn.Size = UDim2.fromOffset(28, 28)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.Text = "X"
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.TextSize = 14
+	closeBtn.Active = true
+	closeBtn.Selectable = true
+	closeBtn.ZIndex = 22
+	closeBtn.Parent = destinationVoteFrame
+	closeBtn.MouseButton1Click:Connect(function()
+		UIController.ToggleDestinationVoting(false)
+	end)
+
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(0, 6)
+	closeCorner.Parent = closeBtn
+
+	-- Status Banner
+	local statusBanner = Instance.new("Frame")
+	statusBanner.Name = "StatusBanner"
+	statusBanner.Position = UDim2.fromOffset(20, 44)
+	statusBanner.Size = UDim2.new(1, -40, 0, 30)
+	statusBanner.BackgroundColor3 = Color3.fromRGB(24, 30, 40)
+	statusBanner.ZIndex = 21
+	statusBanner.Parent = destinationVoteFrame
+
+	local statusCorner = Instance.new("UICorner")
+	statusCorner.CornerRadius = UDim.new(0, 6)
+	statusCorner.Parent = statusBanner
+
+	voteStatusLabel = Instance.new("TextLabel")
+	voteStatusLabel.Name = "StatusLabel"
+	voteStatusLabel.Position = UDim2.fromOffset(10, 0)
+	voteStatusLabel.Size = UDim2.new(0.5, -10, 1, 0)
+	voteStatusLabel.BackgroundTransparency = 1
+	voteStatusLabel.Font = Enum.Font.GothamBold
+	voteStatusLabel.Text = "Voting Open - Select next station"
+	voteStatusLabel.TextColor3 = Color3.fromRGB(120, 230, 150)
+	voteStatusLabel.TextSize = 12
+	voteStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+	voteStatusLabel.ZIndex = 22
+	voteStatusLabel.Parent = statusBanner
+
+	voteSummaryLabel = Instance.new("TextLabel")
+	voteSummaryLabel.Name = "SummaryLabel"
+	voteSummaryLabel.AnchorPoint = Vector2.new(1, 0)
+	voteSummaryLabel.Position = UDim2.new(1, -10, 0, 0)
+	voteSummaryLabel.Size = UDim2.new(0.5, -10, 1, 0)
+	voteSummaryLabel.BackgroundTransparency = 1
+	voteSummaryLabel.Font = Enum.Font.GothamMedium
+	voteSummaryLabel.Text = "Leading: -- | Total Votes: 0"
+	voteSummaryLabel.TextColor3 = Color3.fromRGB(180, 190, 210)
+	voteSummaryLabel.TextSize = 11
+	voteSummaryLabel.TextXAlignment = Enum.TextXAlignment.Right
+	voteSummaryLabel.ZIndex = 22
+	voteSummaryLabel.Parent = statusBanner
+
+	-- Station list scroll container
+	stationListContainer = Instance.new("ScrollingFrame")
+	stationListContainer.Name = "StationList"
+	stationListContainer.Position = UDim2.fromOffset(20, 84)
+	stationListContainer.Size = UDim2.new(1, -40, 1, -96)
+	stationListContainer.BackgroundTransparency = 1
+	stationListContainer.ScrollBarThickness = 6
+	stationListContainer.CanvasSize = UDim2.fromOffset(0, 220)
+	stationListContainer.ZIndex = 21
+	stationListContainer.Parent = destinationVoteFrame
+
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 8)
+	layout.Parent = stationListContainer
+end
+
+function UIController.ToggleDestinationVoting(visible: boolean)
+	if destinationVoteFrame then
+		destinationVoteFrame.Visible = visible
+		if visible and latestVoteSummary then
+			UIController.UpdateDestinationVotes(latestVoteSummary)
+		end
+	end
+end
+
+function UIController.CastVote(stationId: string)
+	if latestVoteSummary and latestVoteSummary.VotingOpen == false then
+		UIController.ShowNotification("Destination voting is currently closed.", "Warning")
+		return
+	end
+
+	mySelectedVote = stationId
+
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	if remotes then
+		local voteRemote = remotes:FindFirstChild("RequestDestinationVote") :: RemoteEvent?
+		if voteRemote then
+			voteRemote:FireServer(stationId)
+		end
+	end
+
+	if latestVoteSummary then
+		UIController.UpdateDestinationVotes(latestVoteSummary)
+	end
+end
+
+function UIController.UpdateDestinationVotes(summary: { [string]: any })
+	latestVoteSummary = summary
+
+	local isOpen = summary.VotingOpen == true
+	if voteStatusLabel then
+		if isOpen then
+			voteStatusLabel.Text = "Voting Open - Select next station"
+			voteStatusLabel.TextColor3 = Color3.fromRGB(120, 230, 150)
+		else
+			voteStatusLabel.Text = "Voting Closed - Destination locked"
+			voteStatusLabel.TextColor3 = Color3.fromRGB(230, 100, 100)
+		end
+	end
+
+	local tally = (summary.Tally :: { [string]: number }?) or {}
+	local totalVotes = tonumber(summary.TotalVotes) or 0
+	local leadingStation = tostring(summary.LeadingStation or "")
+	local stationOptions = (summary.StationOptions :: { [string]: string }?) or {}
+
+	if voteSummaryLabel then
+		local leadingName = stationOptions[leadingStation] or leadingStation
+		local leadingCount = tally[leadingStation] or 0
+		if totalVotes > 0 then
+			voteSummaryLabel.Text = string.format("Leading: %s (%d votes) | Total: %d", leadingName, leadingCount, totalVotes)
+		else
+			voteSummaryLabel.Text = string.format("Default: %s | Total Votes: 0", leadingName)
+		end
+	end
+
+	if not stationListContainer then return end
+
+	-- Deterministic station keys
+	local keys: { string } = {}
+	for id in pairs(stationOptions) do
+		table.insert(keys, id)
+	end
+	table.sort(keys)
+
+	-- Clear old children (except layout)
+	for _, child in ipairs(stationListContainer:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+
+	for _, id in ipairs(keys) do
+		local name = stationOptions[id]
+		local count = tally[id] or 0
+		local isLeading = (leadingStation == id and totalVotes > 0)
+		local isMyVote = (mySelectedVote == id)
+
+		local card = Instance.new("Frame")
+		card.Name = id
+		card.Size = UDim2.new(1, -8, 0, 56)
+		card.BackgroundColor3 = isMyVote and Color3.fromRGB(30, 40, 54) or Color3.fromRGB(24, 28, 36)
+		card.ZIndex = 22
+		card.Parent = stationListContainer
+
+		local cardCorner = Instance.new("UICorner")
+		cardCorner.CornerRadius = UDim.new(0, 6)
+		cardCorner.Parent = card
+
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Color = isMyVote and Color3.fromRGB(60, 150, 230) or Color3.fromRGB(45, 50, 65)
+		cardStroke.Thickness = isMyVote and 1.5 or 1
+		cardStroke.Parent = card
+
+		local titleLabel = Instance.new("TextLabel")
+		titleLabel.Position = UDim2.fromOffset(12, 8)
+		titleLabel.Size = UDim2.new(1, -130, 0, 20)
+		titleLabel.BackgroundTransparency = 1
+		titleLabel.Font = Enum.Font.GothamBold
+		titleLabel.Text = name
+		titleLabel.TextColor3 = isLeading and Color3.fromRGB(250, 215, 100) or Color3.fromRGB(230, 235, 245)
+		titleLabel.TextSize = 13
+		titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+		titleLabel.ZIndex = 23
+		titleLabel.Parent = card
+
+		local countLabel = Instance.new("TextLabel")
+		countLabel.Position = UDim2.fromOffset(12, 30)
+		countLabel.Size = UDim2.new(1, -130, 0, 18)
+		countLabel.BackgroundTransparency = 1
+		countLabel.Font = Enum.Font.Gotham
+		local leadTag = isLeading and " ★ LEADING" or ""
+		countLabel.Text = string.format("%d votes%s", count, leadTag)
+		countLabel.TextColor3 = isLeading and Color3.fromRGB(240, 200, 90) or Color3.fromRGB(150, 160, 175)
+		countLabel.TextSize = 11
+		countLabel.TextXAlignment = Enum.TextXAlignment.Left
+		countLabel.ZIndex = 23
+		countLabel.Parent = card
+
+		local voteBtn = Instance.new("TextButton")
+		voteBtn.Name = "VoteButton"
+		voteBtn.AnchorPoint = Vector2.new(1, 0.5)
+		voteBtn.Position = UDim2.new(1, -10, 0.5, 0)
+		voteBtn.Size = UDim2.fromOffset(90, 34)
+		voteBtn.Font = Enum.Font.GothamBold
+		voteBtn.TextSize = 12
+		voteBtn.ZIndex = 24
+		voteBtn.Selectable = true
+		voteBtn.Parent = card
+
+		local btnCorner2 = Instance.new("UICorner")
+		btnCorner2.CornerRadius = UDim.new(0, 6)
+		btnCorner2.Parent = voteBtn
+
+		if not isOpen then
+			voteBtn.Text = "CLOSED"
+			voteBtn.Active = false
+			voteBtn.BackgroundColor3 = Color3.fromRGB(48, 52, 60)
+			voteBtn.TextColor3 = Color3.fromRGB(130, 135, 145)
+		elseif isMyVote then
+			voteBtn.Text = "VOTED"
+			voteBtn.Active = true
+			voteBtn.BackgroundColor3 = Color3.fromRGB(35, 140, 70)
+			voteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		else
+			voteBtn.Text = "VOTE"
+			voteBtn.Active = true
+			voteBtn.BackgroundColor3 = Color3.fromRGB(45, 120, 210)
+			voteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		end
+
+		voteBtn.MouseButton1Click:Connect(function()
+			UIController.CastVote(id)
+		end)
+	end
+end
+
+function UIController.GetSelectedVote(): string?
+	return mySelectedVote
+end
+
+function UIController.GetLatestVoteSummary(): { [string]: any }?
+	return latestVoteSummary
 end
 
 return UIController
