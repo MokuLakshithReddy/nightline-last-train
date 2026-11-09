@@ -2,7 +2,29 @@
 -- AnalyticsService.luau
 -- Authoritative server telemetry for core gameplay funnels and economic health
 -- Integrates with Roblox AnalyticsService with strict payload validation, schema hygiene, and PII avoidance
+--
+-- Telemetry Attribution and Delivery Architecture:
+-- ------------------------------------------------
+-- 1. External Delivery (Roblox AnalyticsService):
+--    Requires a valid Player instance. Dispatches live gameplay & funnel metrics:
+--    - SessionStart: Player joined server, lifetime runs and scrap balance
+--    - ExpeditionStart: Dispatched per roster participant on departure
+--    - ExpeditionEnd: Dispatched per roster participant on conclusion
+--    - ObjectiveStepCompleted: Dispatched for player advancing objective
+--    - PlayerExtracted: Dispatched when player enters extraction zone
+--    - PlayerEliminated: Dispatched on player death/elimination
+--    - UpgradePurchased: Custom event + LogEconomyEvent (Sink, "Scrap", "Shop", upgradeId)
+--    - DeveloperProductPurchased / GamePassPurchased: Monetization events
+--
+-- 2. Local Ring Buffer (recentEvents, size 200):
+--    Stores both player-attributed events and aggregate session summaries.
+--    Available via AnalyticsService.GetRecentEvents() for live server diagnostics.
+--
+-- 3. Error Visibility & Monitoring:
+--    All Roblox AnalyticsService dispatches catch errors, increment dispatchFailureCount,
+--    and log warnings instead of silently swallowing failures.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RobloxAnalytics: any = nil
 pcall(function()
@@ -25,6 +47,7 @@ local MAX_ATTRIBUTE_VAL_LEN = 128
 local MAX_ATTRIBUTES_COUNT = 15
 
 local recentEvents: { TelemetryEvent } = {}
+local dispatchFailureCount = 0
 
 local AnalyticsService = {}
 
@@ -76,10 +99,41 @@ function AnalyticsService.TrackEvent(eventName: string, player: Player?, attribu
 
 	-- Dispatch to Roblox AnalyticsService if available in live environment
 	if RobloxAnalytics and player then
-		pcall(function()
+		local ok, err = pcall(function()
 			RobloxAnalytics:LogCustomEvent(player, eventName, metricValue or 1, sanitized)
 		end)
+		if not ok then
+			dispatchFailureCount += 1
+			log:Warn("Failed to dispatch LogCustomEvent to Roblox AnalyticsService", {
+				EventName = eventName,
+				Player = player.Name,
+				Error = tostring(err),
+				TotalFailures = dispatchFailureCount,
+			})
+		end
 	end
+end
+
+-- Record aggregate or system-level event strictly in local ring buffer without calling player-dependent APIs
+function AnalyticsService.TrackBufferedAggregate(eventName: string, attributes: { [string]: any }?, metricValue: number?)
+	local sanitized = sanitizeAttributes(attributes)
+	if metricValue ~= nil then
+		sanitized["MetricValue"] = metricValue
+	end
+
+	local eventRecord: TelemetryEvent = {
+		EventName = eventName,
+		UserId = nil,
+		Attributes = sanitized,
+		Timestamp = os.time(),
+	}
+
+	table.insert(recentEvents, eventRecord)
+	if #recentEvents > MAX_RECENT_BUFFER then
+		table.remove(recentEvents, 1)
+	end
+
+	log:Info("Telemetry (Aggregate) [" .. eventName .. "]", sanitized)
 end
 
 function AnalyticsService.TrackSessionStart(player: Player, runs: number, scrap: number)
@@ -89,22 +143,76 @@ function AnalyticsService.TrackSessionStart(player: Player, runs: number, scrap:
 	})
 end
 
-function AnalyticsService.TrackExpeditionStart(roundId: string, stationId: string, rosterSize: number)
-	AnalyticsService.TrackEvent("ExpeditionStart", nil, {
+function AnalyticsService.TrackExpeditionStart(
+	roundId: string,
+	stationId: string,
+	rosterSize: number,
+	roster: (Player | { [any]: Player })?
+)
+	local attrs = {
 		RoundId = roundId,
 		StationId = stationId,
 		RosterSize = rosterSize,
-	}, rosterSize)
+	}
+
+	-- 1. Buffer aggregate round event locally
+	AnalyticsService.TrackBufferedAggregate("ExpeditionStart", attrs, rosterSize)
+
+	-- 2. Attributed dispatch to participating players
+	local playersToNotify: { Player } = {}
+	if typeof(roster) == "Instance" and (roster :: any):IsA("Player") then
+		table.insert(playersToNotify, roster :: Player)
+	elseif typeof(roster) == "table" then
+		for _, p in pairs(roster :: any) do
+			if typeof(p) == "Instance" and p:IsA("Player") then
+				table.insert(playersToNotify, p)
+			end
+		end
+	else
+		playersToNotify = Players:GetPlayers()
+	end
+
+	for _, p in ipairs(playersToNotify) do
+		AnalyticsService.TrackEvent("ExpeditionStart", p, attrs, rosterSize)
+	end
 end
 
-function AnalyticsService.TrackExpeditionEnd(roundId: string, stationId: string, survivedCount: number, rosterSize: number, scrapExtracted: number)
-	AnalyticsService.TrackEvent("ExpeditionEnd", nil, {
+function AnalyticsService.TrackExpeditionEnd(
+	roundId: string,
+	stationId: string,
+	survivedCount: number,
+	rosterSize: number,
+	scrapExtracted: number,
+	roster: (Player | { [any]: Player })?
+)
+	local attrs = {
 		RoundId = roundId,
 		StationId = stationId,
 		SurvivedCount = survivedCount,
 		RosterSize = rosterSize,
 		ScrapExtracted = scrapExtracted,
-	}, survivedCount)
+	}
+
+	-- 1. Buffer aggregate round event locally
+	AnalyticsService.TrackBufferedAggregate("ExpeditionEnd", attrs, survivedCount)
+
+	-- 2. Attributed dispatch to participating players
+	local playersToNotify: { Player } = {}
+	if typeof(roster) == "Instance" and (roster :: any):IsA("Player") then
+		table.insert(playersToNotify, roster :: Player)
+	elseif typeof(roster) == "table" then
+		for _, p in pairs(roster :: any) do
+			if typeof(p) == "Instance" and p:IsA("Player") then
+				table.insert(playersToNotify, p)
+			end
+		end
+	else
+		playersToNotify = Players:GetPlayers()
+	end
+
+	for _, p in ipairs(playersToNotify) do
+		AnalyticsService.TrackEvent("ExpeditionEnd", p, attrs, survivedCount)
+	end
 end
 
 function AnalyticsService.TrackObjectiveCompleted(player: Player?, missionType: string, stepNumber: number, totalSteps: number)
@@ -136,20 +244,43 @@ function AnalyticsService.TrackUpgradePurchased(player: Player, upgradeId: strin
 		RemainingBalance = remainingBalance,
 	}, costScrap)
 
-	-- Also log economy event if supported
-	if RobloxAnalytics then
-		pcall(function()
+	-- Also log economy event using documented string type for transactionType
+	if RobloxAnalytics and player then
+		local transactionTypeName = Enum.AnalyticsEconomyTransactionType.Shop.Name
+		local ok, err = pcall(function()
 			RobloxAnalytics:LogEconomyEvent(
 				player,
 				Enum.AnalyticsEconomyFlowType.Sink,
 				"Scrap",
 				costScrap,
 				remainingBalance,
-				Enum.AnalyticsEconomyTransactionType.Shop,
+				transactionTypeName,
 				upgradeId
 			)
 		end)
+		if not ok then
+			dispatchFailureCount += 1
+			log:Warn("Failed to dispatch LogEconomyEvent to Roblox AnalyticsService", {
+				Upgrade = upgradeId,
+				Cost = costScrap,
+				Player = player.Name,
+				Error = tostring(err),
+				TotalFailures = dispatchFailureCount,
+			})
+		end
 	end
+end
+
+function AnalyticsService.GetDispatchFailureCount(): number
+	return dispatchFailureCount
+end
+
+function AnalyticsService.ResetDispatchFailureCount()
+	dispatchFailureCount = 0
+end
+
+function AnalyticsService.SetRobloxAnalytics(service: any)
+	RobloxAnalytics = service
 end
 
 function AnalyticsService.GetRecentEvents(limit: number?): { TelemetryEvent }
