@@ -1,0 +1,80 @@
+{
+  "name": "NIGHTLINE_Last_Train",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": {
+        "$path": "src/ReplicatedStorage/Shared"
+      },
+      "Remotes": {
+        "$className": "Folder"
+      }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Bootstrap": {
+        "$path": "src/ServerScriptService/Bootstrap.server.luau"
+      },
+      "Services": {
+        "$path": "src/ServerScriptService/Services"
+      },
+      "AI": {
+        "$path": "src/ServerScriptService/AI"
+      }
+    },
+
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "Templates": {
+        "$path": "src/ServerStorage/Templates"
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "ClientBootstrap": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/ClientBootstrap.client.luau"
+        },
+        "Controllers": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/Controllers"
+        }
+      }
+    },
+
+    "StarterGui": {
+      "$className": "StarterGui"
+    },
+
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "FilteringEnabled": true
+      }
+    },
+
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Ambient": [30, 30, 40],
+        "Brightness": 1,
+        "ClockTime": 22,
+        "FogColor": [20, 20, 30],
+        "FogEnd": 300,
+        "FogStart": 20,
+        "OutdoorAmbient": [25, 25, 35]
+      }
+    },
+
+    "SoundService": {
+      "$className": "SoundService",
+      "$properties": {
+        "RespectFilteringEnabled": true
+      }
+    }
+  }
+}

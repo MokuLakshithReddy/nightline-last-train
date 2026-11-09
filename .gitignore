@@ -1,0 +1,15 @@
+# Binaries and local tools
+bin/
+*.zip
+*.exe
+
+# Roblox build outputs
+*.rbxl
+*.rbxlx
+*.rbxlx.lock
+*.rbxl.lock
+
+# OS and Editor
+.DS_Store
+Thumbs.db
+.vscode/
