@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-- **Current Milestone:** Milestone 6 — Multiplayer, Security & Performance QA (Active)
+- **Current Milestone:** Milestone 7 — Closed Test & Public Launch Preparation (Active)
 - **Completed Milestones:**
   - Milestone 0: Environment, Tooling & Foundation
   - Milestone 1: Train Hub & Round Foundation
@@ -10,6 +10,7 @@
   - Milestone 3: The Hollow AI, Sensory Perception & Survival Mechanics
   - Milestone 4: Rewards, Train Upgrades, Artifacts & DataStore Persistence
   - Milestone 5: Mobile UX, Art, Visual Effects & Dynamic Audio Immersion
+  - Milestone 6: Multiplayer Stress Testing, Security Validation & Exploit Hardening
 
 ---
 
@@ -23,5 +24,5 @@
 | **Milestone 3** | The Hollow AI, noise events, perception, chase, fair attack rules | 🟢 Complete | 5 FSM states, line-of-sight raycasts, noise hearing, elimination handling |
 | **Milestone 4** | RewardService, PlayerDataService, Scrap upgrades, persistence | 🟢 Complete | Profile sync, DataStore retries/fallback, Upgrade Shop modal, Artifact drops |
 | **Milestone 5** | Mobile controls, responsive UI polish, audio & visual immersion | 🟢 Complete | Touch controls, dynamic audio layering, camera shake, atmospheric fog |
-| **Milestone 6** | Multiplayer stress testing, security validation, exploit hardening | 🟡 Active | 6-player simulation, remote abuse tests, memory stability |
-| **Milestone 7** | Closed playtests, tuning, release QA checklist, Creator Dashboard | ⚪ Pending | Release QA checklist 100% sign-off |
+| **Milestone 6** | Multiplayer stress testing, security validation, exploit hardening | 🟢 Complete | 6-player simulation, remote abuse tests, memory stability, 100% QA checklist sign-off |
+| **Milestone 7** | Closed playtests, tuning, release QA checklist, Creator Dashboard | 🟡 Active | Release QA checklist sign-off and Creator Dashboard config |

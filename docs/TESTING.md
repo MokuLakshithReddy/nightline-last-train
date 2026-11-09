@@ -48,3 +48,9 @@ Testing in NIGHTLINE is conducted across three levels:
 | **M5-T3** | Heartbeat Distance | Player approaches creature | Distance check < 60 studs | Volume and playback speed increase as creature nears; fades out upon evasion | ✅ Passed |
 | **M5-T4** | Lighting Ambience | Station entered | EffectsController applies fog | Smooth transition to dense sub-level fog (FogEnd 160) and dark mood lighting | ✅ Passed |
 | **M5-T5** | Camera Shake | Train departs / arrives | EffectsController.ShakeCamera() | Directional rotational camera shake during travel transitions | ✅ Passed |
+| **M6-T1** | Remote Rate Limiting| Client fires spam requests | SecurityService token bucket | Calls exceeding 10/s throttled and rejected with structured server warning | ✅ Passed |
+| **M6-T2** | Distance Exploit Guard| Remote called from afar | SecurityService distance check | Prompt calls > MaxInteractionDistance rejected; server position verified | ✅ Passed |
+| **M6-T3** | String Sanitization | Invalid or oversized payload | ValidateString check | Payloads > 32/128 characters truncated or rejected; type safety enforced | ✅ Passed |
+| **M6-T4** | Mid-Round Disconnect | Player disconnects during run | PlayerRemoving handler | Safely removed from activeRoster; no nil exceptions or stuck timers | ✅ Passed |
+| **M6-T5** | All-Player Departure | All active players leave | RoundService abort check | Expedition safely aborts to Results and cleans up runtime station instances | ✅ Passed |
+| **M6-T6** | Late-Joiner Routing | Join while station active | CharacterAdded handler | Player spawns in Hub safe zone; spectator status assigned until next round | ✅ Passed |
