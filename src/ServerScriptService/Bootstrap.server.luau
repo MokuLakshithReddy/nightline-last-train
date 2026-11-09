@@ -60,6 +60,7 @@ local ObjectiveService = require(servicesFolder:WaitForChild("ObjectiveService")
 local MonsterService = require(servicesFolder:WaitForChild("MonsterService"))
 local RewardService = require(servicesFolder:WaitForChild("RewardService"))
 local RoundService = require(servicesFolder:WaitForChild("RoundService"))
+local PurchaseService = require(servicesFolder:WaitForChild("PurchaseService"))
 local HubBuilder = require(servicesFolder:WaitForChild("HubBuilder"))
 
 -- Initialize services
@@ -75,6 +76,7 @@ ObjectiveService.Init()
 MonsterService.Init()
 RewardService.Init()
 RoundService.Init()
+PurchaseService.Init()
 
 -- Wire up client-to-server remotes with authoritative validation
 local requestEquipmentRemote = remotesFolder:WaitForChild("RequestEquipment") :: RemoteEvent
