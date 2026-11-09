@@ -370,7 +370,7 @@ def test_analytics_service():
 
 
 # =========================================================================
-# 11. Monetization & Receipt Idempotency (FIX-T23)
+# 11. Monetization & Receipt Idempotency (FIX-T23, FIX-T27)
 # =========================================================================
 
 @test_case("PurchaseService idempotent receipt processing and game pass catalog (FIX-T23)")
@@ -386,6 +386,89 @@ def test_monetization_processing():
     assert "CheckGamePassEntitlements" in content
     assert "Scrap Pouch" in config
     assert "Veteran Lantern" in config
+
+
+@test_case("Developer-product durable receipt persistence, retry rollback, and catalog rejection (FIX-T27)")
+def test_durable_receipt_persistence():
+    with open("src/ReplicatedStorage/Shared/Types/GameTypes.luau", "r", encoding="utf-8") as f:
+        gametypes = f.read()
+    with open("src/ServerScriptService/Services/PlayerDataService.luau", "r", encoding="utf-8") as f:
+        playerdata = f.read()
+    with open("src/ServerScriptService/Services/PurchaseService.luau", "r", encoding="utf-8") as f:
+        purchase = f.read()
+
+    # 1. Type and data store schema contract
+    assert "ProcessedReceipts: { [string]: boolean }?" in gametypes, "PlayerProfile must include ProcessedReceipts"
+    assert "ProcessedReceipts = {}" in playerdata, "DefaultData must initialize ProcessedReceipts"
+    assert "loaded.ProcessedReceipts" in playerdata, "reconcileProfile must restore ProcessedReceipts"
+    assert "current.ProcessedReceipts[rId] = true" in playerdata, "UpdateAsync must merge ProcessedReceipts into store"
+
+    # 2. SaveProfile return contract
+    assert "function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?, isHeartbeat: boolean?): boolean" in playerdata, \
+        "SaveProfile must expose boolean success status"
+
+    # 3. Durable receipt check and rollback logic in PurchaseService
+    assert "profile.ProcessedReceipts and profile.ProcessedReceipts[purchaseId]" in purchase, \
+        "PurchaseService must check durable profile.ProcessedReceipts"
+    assert "local saveSuccess = PlayerDataService.SaveProfile(player)" in purchase, \
+        "PurchaseService must check SaveProfile success"
+    assert "profile.ProcessedReceipts[purchaseId] = nil" in purchase, \
+        "PurchaseService must rollback receipt marker when SaveProfile fails"
+    assert "profile.Scrap = previousScrap" in purchase, \
+        "PurchaseService must rollback scrap entitlement when SaveProfile fails"
+
+    # 4. Unknown product rejection policy
+    assert "Unknown developer product ID in receipt; rejecting grant without recording" in purchase, \
+        "Unknown product IDs must be rejected without granting"
+
+    # 5. Simulated durable idempotency simulation
+    durable_store = {"Player_123": {"Scrap": 50, "ProcessedReceipts": {}}}
+    
+    def simulate_process_receipt(player_id, product_id, purchase_id, save_succeeds):
+        profile = durable_store.get(f"Player_{player_id}")
+        if not profile:
+            return "NotProcessedYet"
+        # Check durable idempotency
+        if profile.get("ProcessedReceipts", {}).get(purchase_id):
+            return "PurchaseGranted"
+        if product_id != 1001:  # unknown
+            return "NotProcessedYet"
+        
+        # Apply grant & stage marker
+        prev_scrap = profile["Scrap"]
+        profile["Scrap"] += 100
+        profile["ProcessedReceipts"][purchase_id] = True
+
+        # Save
+        if not save_succeeds:
+            # Rollback
+            profile["Scrap"] = prev_scrap
+            del profile["ProcessedReceipts"][purchase_id]
+            return "NotProcessedYet"
+        return "PurchaseGranted"
+
+    # First purchase with save failure -> rollback, returns NotProcessedYet
+    res1 = simulate_process_receipt(123, 1001, "rcpt_1", save_succeeds=False)
+    assert res1 == "NotProcessedYet"
+    assert durable_store["Player_123"]["Scrap"] == 50
+    assert "rcpt_1" not in durable_store["Player_123"]["ProcessedReceipts"]
+
+    # Retry with save success -> granted & persisted
+    res2 = simulate_process_receipt(123, 1001, "rcpt_1", save_succeeds=True)
+    assert res2 == "PurchaseGranted"
+    assert durable_store["Player_123"]["Scrap"] == 150
+    assert durable_store["Player_123"]["ProcessedReceipts"]["rcpt_1"] is True
+
+    # Duplicate receipt -> granted without double grant
+    res3 = simulate_process_receipt(123, 1001, "rcpt_1", save_succeeds=True)
+    assert res3 == "PurchaseGranted"
+    assert durable_store["Player_123"]["Scrap"] == 150
+
+    # Unknown product -> rejected
+    res4 = simulate_process_receipt(123, 9999, "rcpt_unknown", save_succeeds=True)
+    assert res4 == "NotProcessedYet"
+    assert durable_store["Player_123"]["Scrap"] == 150
+
 
 
 # =========================================================================
@@ -412,6 +495,7 @@ def main():
     test_interaction_controller()
     test_analytics_service()
     test_monetization_processing()
+    test_durable_receipt_persistence()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

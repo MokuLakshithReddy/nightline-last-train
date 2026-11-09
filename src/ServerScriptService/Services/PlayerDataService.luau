@@ -33,6 +33,7 @@ local DefaultData: GameTypes.PlayerProfile = {
 	},
 	SessionLock = nil,
 	LastProcessedRoundId = nil,
+	ProcessedReceipts = {},
 }
 
 local dataStore: DataStore? = nil
@@ -119,6 +120,16 @@ local function reconcileProfile(loaded: any): GameTypes.PlayerProfile
 	end
 	if type(loaded.LastProcessedRoundId) == "string" then
 		profile.LastProcessedRoundId = loaded.LastProcessedRoundId
+	end
+	if type(loaded.ProcessedReceipts) == "table" then
+		for k, v in pairs(loaded.ProcessedReceipts) do
+			if type(k) == "string" and v == true then
+				if not profile.ProcessedReceipts then
+					profile.ProcessedReceipts = {}
+				end
+				profile.ProcessedReceipts[k] = true
+			end
+		end
 	end
 
 	return profile
@@ -424,18 +435,18 @@ function PlayerDataService.Sync(player: Player, profile: GameTypes.PlayerProfile
 end
 
 -- Serialized save with strict session lock verification and release on departure
-function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?, isHeartbeat: boolean?)
+function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?, isHeartbeat: boolean?): boolean
 	local userId = player.UserId
 	local profile = profilesCache[userId]
-	if not profile then return end
+	if not profile then return false end
 
 	if loadFailed[userId] then
 		log:Warn("Skipping save because session lock/load was unsuccessful; preventing overwrite", { UserId = userId })
-		return
+		return false
 	end
 
 	if not isDirty[userId] and not isReleasing and not isHeartbeat then
-		return
+		return true
 	end
 
 	-- Mutex: wait if a save operation is already in-flight for this player
@@ -444,11 +455,12 @@ function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?, is
 	end
 	isSaving[userId] = true
 
+	local saveSuccess = false
+
 	if dataStore then
 		local key = "Player_" .. tostring(userId)
 		local currentJobId = game.JobId ~= "" and game.JobId or "StudioSession"
 		local retries = 3
-		local saved = false
 
 		for attempt = 1, retries do
 			local success, result = pcall(function()
@@ -476,6 +488,18 @@ function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?, is
 					current.Statistics = profile.Statistics
 					current.LastProcessedRoundId = profile.LastProcessedRoundId
 
+					-- Durably merge processed receipts
+					if profile.ProcessedReceipts then
+						if not current.ProcessedReceipts then
+							current.ProcessedReceipts = {}
+						end
+						for rId, val in pairs(profile.ProcessedReceipts) do
+							if val == true then
+								current.ProcessedReceipts[rId] = true
+							end
+						end
+					end
+
 					if isReleasing then
 						current.SessionLock = nil
 						log:Info("Releasing session lock for departing player", { UserId = userId })
@@ -492,7 +516,7 @@ function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?, is
 
 			-- Verify both pcall success and non-nil return from UpdateAsync callback
 			if success and result ~= nil then
-				saved = true
+				saveSuccess = true
 				isDirty[userId] = false
 				log:Info("Profile saved successfully to DataStore", {
 					UserId = userId,
@@ -511,14 +535,17 @@ function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?, is
 			end
 		end
 
-		if not saved then
+		if not saveSuccess then
 			log:Error("Exhausted retries while attempting to save profile", { UserId = userId })
 		end
 	else
+		-- Running without live DataStore (Studio / Mock mode)
 		isDirty[userId] = false
+		saveSuccess = true
 	end
 
 	isSaving[userId] = false
+	return saveSuccess
 end
 
 return PlayerDataService
