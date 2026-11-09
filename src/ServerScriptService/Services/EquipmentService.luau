@@ -8,11 +8,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local HollowAI = require(script.Parent.Parent:WaitForChild("AI"):WaitForChild("HollowAI"))
+local SecurityService = require(script.Parent:WaitForChild("SecurityService"))
+local InventoryService = require(script.Parent:WaitForChild("InventoryService"))
+local RoundService = require(script.Parent:WaitForChild("RoundService"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
 local log = Logger.new("EquipmentService")
 
 local flashlightStates: { [number]: boolean } = {}
 local activeFlashlightModels: { [number]: Model } = {}
+local lastFlashlightToggleTime: { [number]: number } = {}
+local lastFlareThrowTime: { [number]: number } = {}
 
 local EquipmentService = {}
 
@@ -39,33 +44,61 @@ function EquipmentService.Init()
 	end)
 
 	throwFlare.OnServerEvent:Connect(function(player: Player, lookVector: any)
-		if typeof(lookVector) ~= "Vector3" then return end
 		EquipmentService.ThrowFlare(player, lookVector)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
 		EquipmentService.RemoveFlashlight(player)
+		lastFlashlightToggleTime[player.UserId] = nil
+		lastFlareThrowTime[player.UserId] = nil
 	end)
 end
 
 function EquipmentService.ToggleFlashlight(player: Player): boolean
+	-- 1. Server-side rate limiting
+	if not SecurityService.CheckRateLimit(player, 1) then
+		return false
+	end
+	local now = os.clock()
+	if lastFlashlightToggleTime[player.UserId] and (now - lastFlashlightToggleTime[player.UserId]) < 0.4 then
+		return false
+	end
+	lastFlashlightToggleTime[player.UserId] = now
+
+	-- 2. Validate living character
 	local character = player.Character
 	if not character then return false end
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then return false end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return false end
 
-	local isOn = not (flashlightStates[player.UserId] or false)
-	flashlightStates[player.UserId] = isOn
-
-	if isOn then
-		EquipmentService.AttachFlashlightModel(player, character)
-		log:Info("Player turned ON flashlight", { Player = player.Name })
-	else
-		EquipmentService.RemoveFlashlight(player)
-		log:Info("Player turned OFF flashlight", { Player = player.Name })
+	-- 3. In station expedition phases, require active roster membership
+	local currentPhase = RoundService.GetCurrentState()
+	local isStationPhase = (currentPhase == "EXPLORATION" or currentPhase == "EXTRACTION")
+	if isStationPhase and not RoundService.IsPlayerInRoster(player) then
+		return false
 	end
 
-	return isOn
+	-- 4. Verify flashlight ownership/equip state before enabling
+	local currentlyOn = flashlightStates[player.UserId] or false
+	local willTurnOn = not currentlyOn
+
+	if willTurnOn then
+		if not InventoryService.HasEquippedItem(player, "Flashlight") then
+			log:Warn("Player attempted to enable flashlight without owning/equipping it", { Player = player.Name })
+			return false
+		end
+		flashlightStates[player.UserId] = true
+		EquipmentService.AttachFlashlightModel(player, character)
+		log:Info("Player turned ON flashlight", { Player = player.Name })
+		return true
+	else
+		flashlightStates[player.UserId] = false
+		EquipmentService.RemoveFlashlight(player)
+		log:Info("Player turned OFF flashlight", { Player = player.Name })
+		return false
+	end
 end
 
 function EquipmentService.IsFlashlightOn(player: Player): boolean
@@ -133,13 +166,50 @@ function EquipmentService.RemoveFlashlight(player: Player)
 	end
 end
 
-function EquipmentService.ThrowFlare(player: Player, direction: Vector3)
+function EquipmentService.ThrowFlare(player: Player, direction: any)
+	-- 1. Direction validation (finite, non-zero, non-NaN Vector3)
+	if typeof(direction) ~= "Vector3" then return end
+	if direction.X ~= direction.X or direction.Y ~= direction.Y or direction.Z ~= direction.Z then
+		return
+	end
+	if math.abs(direction.X) == math.huge or math.abs(direction.Y) == math.huge or math.abs(direction.Z) == math.huge then
+		return
+	end
+	if direction.Magnitude < 0.001 then
+		return
+	end
+
+	-- 2. Server-side rate limiting (independent limit for flares)
+	if not SecurityService.CheckRateLimit(player, 2) then return end
+	local now = os.clock()
+	if lastFlareThrowTime[player.UserId] and (now - lastFlareThrowTime[player.UserId]) < 1.0 then
+		return
+	end
+	lastFlareThrowTime[player.UserId] = now
+
+	-- 3. Character and living Humanoid validation
 	local character = player.Character
 	if not character then return end
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
 
-	local InventoryService = require(script.Parent:WaitForChild("InventoryService"))
+	-- 4. Enforce intended phase restrictions (flares only allowed in active station expeditions)
+	local currentPhase = RoundService.GetCurrentState()
+	local isStationPhase = (currentPhase == "EXPLORATION" or currentPhase == "EXTRACTION")
+	if not isStationPhase then
+		log:Warn("Rejected flare throw outside exploration/extraction phase", { Player = player.Name, Phase = currentPhase })
+		return
+	end
+
+	-- 5. Require active roster membership
+	if not RoundService.IsPlayerInRoster(player) then
+		log:Warn("Rejected flare throw from non-rostered player", { Player = player.Name })
+		return
+	end
+
+	-- 6. Verify flare is equipped in inventory slots
 	if not InventoryService.HasEquippedItem(player, "Flare") then
 		log:Warn("Player attempted to throw flare without having one equipped", { Player = player.Name })
 		local remotes = ReplicatedStorage:FindFirstChild("Remotes")
@@ -157,8 +227,9 @@ function EquipmentService.ThrowFlare(player: Player, direction: Vector3)
 		return
 	end
 
-	-- Authoritatively consume the flare from player inventory slots
-	InventoryService.ConsumeEquippedItem(player, "Flare")
+	-- 7. Authoritatively consume the flare from player inventory slots
+	local consumed = InventoryService.ConsumeEquippedItem(player, "Flare")
+	if not consumed then return end
 
 	local cleanDir = direction.Unit
 	if cleanDir.Magnitude ~= cleanDir.Magnitude then
