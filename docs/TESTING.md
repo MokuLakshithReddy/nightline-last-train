@@ -43,3 +43,8 @@ Testing in NIGHTLINE is conducted across three levels:
 | **M4-T4** | Train Upgrade Purchase| Player interacts with terminal | Fire `RequestPurchaseUpgrade` | Validates scrap cost, deducts balance, marks owned, syncs profile | ✅ Passed |
 | **M4-T5** | Artifact Collection | Pick up artifact in tunnel | Survive and extract on train | Added to player permanent `Artifacts` set; recorded in profile | ✅ Passed |
 | **M4-T6** | Upgrade Shop UI | Open terminal in train carriage | UIController toggles modal | Shows real-time Scrap balance, artifact count, and live purchase buttons | ✅ Passed |
+| **M5-T1** | Mobile Controls | Touch enabled device | InputController binds ContextAction | On-screen touch buttons for Sprint and Item slots positioned responsively | ✅ Passed |
+| **M5-T2** | Audio State Layers | Round transitions | AudioController updates volume | Train rumble in Hub/Travel; eerie station drone in Exploration; klaxon in Extraction | ✅ Passed |
+| **M5-T3** | Heartbeat Distance | Player approaches creature | Distance check < 60 studs | Volume and playback speed increase as creature nears; fades out upon evasion | ✅ Passed |
+| **M5-T4** | Lighting Ambience | Station entered | EffectsController applies fog | Smooth transition to dense sub-level fog (FogEnd 160) and dark mood lighting | ✅ Passed |
+| **M5-T5** | Camera Shake | Train departs / arrives | EffectsController.ShakeCamera() | Directional rotational camera shake during travel transitions | ✅ Passed |
