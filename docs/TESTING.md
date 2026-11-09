@@ -29,3 +29,11 @@ Testing in NIGHTLINE is conducted across three levels:
 | **M2-T5** | Scrap Caches | Round in `EXPLORATION` | Scavenge optional caches | Server awards +15 to +25 Scrap directly to player profile | ✅ Passed |
 | **M2-T6** | Extraction Zone | Round enters `RETURN` | Check character position | Players inside extraction volume receive +50 Scrap extraction bonus | ✅ Passed |
 | **M2-T7** | Runtime Cleanup | Round enters `RESULTS`/`WAITING` | StationService.UnloadStation() | All active station parts, prompts, and dropped crates destroyed | ✅ Passed |
+| **M3-T1** | Hollow Model | Round enters `EXPLORATION` | MonsterService spawns model | Slender shadow figure with dark slate torso, head, particle smoke, glowing eyes, and Humanoid | ✅ Passed |
+| **M3-T2** | Patrol Behavior | Monster spawned | No player noise or sight | Moves along waypoints across Concourse, Maintenance, Cargo, Control, and Tunnel at 10 studs/s | ✅ Passed |
+| **M3-T3** | Hearing Detection | Player runs or walks | Heartbeat emits noise radius | Sprints (45 stud radius) alert creature to `INVESTIGATE` position; walks (20 studs) remain quieter | ✅ Passed |
+| **M3-T4** | Line-of-Sight Sight | Player enters 110 deg FOV | Raycast check against walls | Direct sight triggers `CHASE` (19 studs/s); walls block line-of-sight | ✅ Passed |
+| **M3-T5** | Search & Return | Player breaks sight & escapes | Run outside max range | Creature searches last known position for 8s, then returns to patrol route | ✅ Passed |
+| **M3-T6** | Attack & Elimination | Creature reaches 5.5 studs | Line-of-sight hit validation | 0.4s eye flash telegraph, eliminates player from expedition, teleports to Hub, no data lost | ✅ Passed |
+| **M3-T7** | Server Ownership | Physics check | Network owner inspection | Creature HumanoidRootPart network owner is nil (server-authoritative, exploit-immune) | ✅ Passed |
+| **M3-T8** | Runtime Despawn | Round enters `RETURN` | MonsterService.DespawnMonster() | Model destroyed, AI loop thread canceled, noise listeners cleanly disconnected | ✅ Passed |
