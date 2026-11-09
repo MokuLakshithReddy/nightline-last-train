@@ -353,7 +353,7 @@ function RoundService.StartGameLoop()
 
 					local rosterCount = 0
 					for _ in pairs(activeRoster) do rosterCount += 1 end
-					AnalyticsService.TrackExpeditionStart(currentRoundId, currentStationId, rosterCount)
+					AnalyticsService.TrackExpeditionStart(currentRoundId, currentStationId, rosterCount, activeRoster)
 
 					local missions: { GameTypes.MissionType } = { "RestorePower", "RecoverCargo", "RepairSignal" }
 					local missionIndex = ((roundCounter - 1) % #missions) + 1
@@ -423,7 +423,7 @@ function RoundService.StartGameLoop()
 					for _ in pairs(extractedPlayers) do survivedCount += 1 end
 					local totalRoster = 0
 					for _ in pairs(activeRoster) do totalRoster += 1 end
-					AnalyticsService.TrackExpeditionEnd(currentRoundId, currentStationId, survivedCount, totalRoster, 0)
+					AnalyticsService.TrackExpeditionEnd(currentRoundId, currentStationId, survivedCount, totalRoster, 0, activeRoster)
 
 					for userId, player in pairs(activeRoster) do
 						pcall(function()

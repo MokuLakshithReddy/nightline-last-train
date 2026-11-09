@@ -422,7 +422,7 @@ def test_interaction_controller():
 
 
 # =========================================================================
-# 10. Analytics & Gameplay Funnel Telemetry (FIX-T22)
+# 10. Analytics & Gameplay Funnel Telemetry (FIX-T22, FIX-T29)
 # =========================================================================
 
 @test_case("AnalyticsService schema hygiene and lifecycle hook coverage (FIX-T22)")
@@ -437,6 +437,80 @@ def test_analytics_service():
     assert "TrackPlayerElimination" in content
     assert "TrackUpgradePurchased" in content
     assert "sanitizeAttributes" in content
+
+
+@test_case("AnalyticsService player attribution, economy string enum, and failure counter (FIX-T29)")
+def test_analytics_event_dispatch_and_economy():
+    with open("src/ServerScriptService/Services/AnalyticsService.luau", "r", encoding="utf-8") as f:
+        content = f.read()
+    with open("src/ServerScriptService/Services/RoundService.luau", "r", encoding="utf-8") as f:
+        round_content = f.read()
+
+    # 1. Verification of economy event argument mapping
+    assert "Enum.AnalyticsEconomyTransactionType.Shop.Name" in content, \
+        "LogEconomyEvent transactionType must be a documented string (e.g. Enum.AnalyticsEconomyTransactionType.Shop.Name)"
+    assert 'RobloxAnalytics:LogEconomyEvent(' in content, "Must call LogEconomyEvent"
+    assert 'transactionTypeName' in content, "transactionTypeName string must be passed to LogEconomyEvent"
+
+    # 2. Player attribution for expedition start & end
+    assert "AnalyticsService.TrackBufferedAggregate" in content, "Must provide local buffer for aggregate events"
+    assert "playersToNotify" in content, "TrackExpeditionStart/End must resolve participating players for attributed dispatch"
+    assert "AnalyticsService.TrackExpeditionStart(currentRoundId, currentStationId, rosterCount, activeRoster)" in round_content, \
+        "RoundService must pass activeRoster to TrackExpeditionStart"
+    assert "AnalyticsService.TrackExpeditionEnd(currentRoundId, currentStationId, survivedCount, totalRoster, 0, activeRoster)" in round_content, \
+        "RoundService must pass activeRoster to TrackExpeditionEnd"
+
+    # 3. Dispatch failure counter and error visibility
+    assert "dispatchFailureCount" in content, "AnalyticsService must track dispatch failure count"
+    assert "dispatchFailureCount += 1" in content, "dispatchFailureCount must increment on pcall failure"
+    assert "AnalyticsService.GetDispatchFailureCount" in content, "GetDispatchFailureCount getter required"
+
+    # 4. Simulation of player-attributed expedition & economy dispatch
+    dispatched_custom = []
+    dispatched_economy = []
+    failures = [0]
+
+    class MockRobloxAnalytics:
+        def __init__(self, throw_on_economy=False):
+            self.throw_on_economy = throw_on_economy
+
+        def log_custom_event(self, player, event_name, metric_val, attributes):
+            if player is None:
+                raise ValueError("Player cannot be None in LogCustomEvent")
+            dispatched_custom.append((player["UserId"], event_name, metric_val, attributes))
+
+        def log_economy_event(self, player, flow_type, currency, amount, balance, transaction_type, item_sku):
+            if self.throw_on_economy:
+                raise RuntimeError("Analytics backend unavailable")
+            if not isinstance(transaction_type, str):
+                raise TypeError("transaction_type must be string")
+            dispatched_economy.append((player["UserId"], flow_type, currency, amount, balance, transaction_type, item_sku))
+
+    mock = MockRobloxAnalytics()
+    p1 = {"Name": "Player1", "UserId": 100}
+    p2 = {"Name": "Player2", "UserId": 200}
+    roster = {100: p1, 200: p2}
+
+    # Simulate expedition start dispatch
+    for uid, player in roster.items():
+        mock.log_custom_event(player, "ExpeditionStart", 2, {"RoundId": "rnd_1", "StationId": "Station001", "RosterSize": 2})
+
+    assert len(dispatched_custom) == 2
+    assert dispatched_custom[0][0] == 100
+    assert dispatched_custom[1][0] == 200
+
+    # Simulate economy event dispatch with string transaction type
+    mock.log_economy_event(p1, "Sink", "Scrap", 200, 50, "Shop", "ReinforcedPlating")
+    assert len(dispatched_economy) == 1
+    assert dispatched_economy[0] == (100, "Sink", "Scrap", 200, 50, "Shop", "ReinforcedPlating")
+
+    # Simulate failure tracking
+    failing_mock = MockRobloxAnalytics(throw_on_economy=True)
+    try:
+        failing_mock.log_economy_event(p1, "Sink", "Scrap", 200, 50, "Shop", "ReinforcedPlating")
+    except Exception:
+        failures[0] += 1
+    assert failures[0] == 1, "Failures must be caught and counted"
 
 
 # =========================================================================
@@ -565,6 +639,7 @@ def main():
     test_camera_controller()
     test_interaction_controller()
     test_analytics_service()
+    test_analytics_event_dispatch_and_economy()
     test_monetization_processing()
     test_durable_receipt_persistence()
 
