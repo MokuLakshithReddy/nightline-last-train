@@ -1,12 +1,14 @@
 --!strict
 -- UIController.luau
--- Responsive user interface controller for NIGHTLINE: LAST TRAIN
+-- Responsive user interface, HUD, and Upgrade Shop controller for NIGHTLINE: LAST TRAIN
 
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local GameTypes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"):WaitForChild("GameTypes"))
+local RewardConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("RewardConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
 local log = Logger.new("UIController")
 
@@ -27,7 +29,14 @@ local notificationText: TextLabel? = nil
 local slot1Label: TextLabel? = nil
 local slot2Label: TextLabel? = nil
 
+-- Upgrade Shop Elements
+local upgradeShopFrame: Frame? = nil
+local scrapBalanceLabel: TextLabel? = nil
+local artifactCountLabel: TextLabel? = nil
+local upgradeListContainer: ScrollingFrame? = nil
+
 local currentPhaseEndsAt: number = 0
+local cachedProfile: GameTypes.PlayerProfile? = nil
 
 local function formatTime(seconds: number): string
 	local s = math.max(0, math.floor(seconds))
@@ -37,14 +46,16 @@ local function formatTime(seconds: number): string
 end
 
 function UIController.Init()
-	log:Info("Initializing responsive HUD...")
+	log:Info("Initializing responsive HUD and Upgrade Shop...")
 	UIController.BuildHUD()
+	UIController.BuildUpgradeShop()
 
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local roundStateRemote = remotes:WaitForChild("RoundStateChanged") :: RemoteEvent
 	local objectiveRemote = remotes:WaitForChild("ObjectiveUpdated") :: RemoteEvent
 	local notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
 	local inventoryRemote = remotes:WaitForChild("InventoryUpdated") :: RemoteEvent
+	local profileRemote = remotes:WaitForChild("ProfileUpdated") :: RemoteEvent
 
 	roundStateRemote.OnClientEvent:Connect(function(state: string, _serverTime: number, phaseEndsAt: number, _stationId: string)
 		currentPhaseEndsAt = phaseEndsAt
@@ -63,6 +74,13 @@ function UIController.Init()
 
 		if objectiveFrame then
 			objectiveFrame.Visible = (state == "EXPLORATION" or state == "EXTRACTION")
+		end
+
+		-- Automatically close shop when departure/travel occurs
+		if state == "TRAVEL" or state == "EXPLORATION" then
+			if upgradeShopFrame then
+				upgradeShopFrame.Visible = false
+			end
 		end
 	end)
 
@@ -96,6 +114,18 @@ function UIController.Init()
 		end
 	end)
 
+	profileRemote.OnClientEvent:Connect(function(profile: GameTypes.PlayerProfile)
+		cachedProfile = profile
+		UIController.UpdateShopUI()
+	end)
+
+	-- Open upgrade terminal via ProximityPrompt
+	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, player: Player)
+		if player == localPlayer and prompt.Name == "OpenUpgradeTerminalPrompt" then
+			UIController.ToggleUpgradeShop(true)
+		end
+	end)
+
 	-- Timer update loop
 	task.spawn(function()
 		while true do
@@ -106,6 +136,44 @@ function UIController.Init()
 			task.wait(0.25)
 		end
 	end)
+end
+
+function UIController.ToggleUpgradeShop(visible: boolean)
+	if upgradeShopFrame then
+		upgradeShopFrame.Visible = visible
+		if visible then
+			UIController.UpdateShopUI()
+		end
+	end
+end
+
+function UIController.UpdateShopUI()
+	if not cachedProfile then return end
+	if scrapBalanceLabel then
+		scrapBalanceLabel.Text = string.format("SCRAP BALANCE: %d", cachedProfile.Scrap)
+	end
+
+	if artifactCountLabel then
+		local count = 0
+		for _, v in pairs(cachedProfile.Artifacts) do
+			if v == true then count += 1 end
+		end
+		artifactCountLabel.Text = string.format("ARTIFACTS RECOVERED: %d / 4", count)
+	end
+
+	if not upgradeListContainer then return end
+	for _, child in ipairs(upgradeListContainer:GetChildren()) do
+		if child:IsA("Frame") then
+			local upgradeId = child.Name
+			local buyBtn = child:FindFirstChild("BuyButton") :: TextButton?
+			if buyBtn and cachedProfile.TrainUpgrades[upgradeId] then
+				buyBtn.Text = "OWNED"
+				buyBtn.BackgroundColor3 = Color3.fromRGB(60, 65, 70)
+				buyBtn.TextColor3 = Color3.fromRGB(160, 165, 175)
+				buyBtn.Active = false
+			end
+		end
+	end
 end
 
 function UIController.ShowNotification(text: string, severity: "Info" | "Warning" | "Alert" | "Success")
@@ -327,6 +395,189 @@ function UIController.BuildHUD()
 	local s2Corner = Instance.new("UICorner")
 	s2Corner.CornerRadius = UDim.new(0, 6)
 	s2Corner.Parent = slot2Label
+end
+
+function UIController.BuildUpgradeShop()
+	if not mainScreenGui then return end
+
+	upgradeShopFrame = Instance.new("Frame")
+	upgradeShopFrame.Name = "UpgradeShopModal"
+	upgradeShopFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	upgradeShopFrame.Position = UDim2.fromScale(0.5, 0.5)
+	upgradeShopFrame.Size = UDim2.fromOffset(500, 380)
+	upgradeShopFrame.BackgroundColor3 = Color3.fromRGB(18, 22, 28)
+	upgradeShopFrame.BorderSizePixel = 0
+	upgradeShopFrame.Visible = false
+	upgradeShopFrame.ZIndex = 20
+	upgradeShopFrame.Parent = mainScreenGui
+
+	local shopCorner = Instance.new("UICorner")
+	shopCorner.CornerRadius = UDim.new(0, 10)
+	shopCorner.Parent = upgradeShopFrame
+
+	local shopStroke = Instance.new("UIStroke")
+	shopStroke.Color = Color3.fromRGB(70, 90, 120)
+	shopStroke.Thickness = 2
+	shopStroke.Parent = upgradeShopFrame
+
+	-- Header Title
+	local header = Instance.new("TextLabel")
+	header.Name = "Header"
+	header.Position = UDim2.fromOffset(20, 14)
+	header.Size = UDim2.new(1, -80, 0, 26)
+	header.BackgroundTransparency = 1
+	header.Font = Enum.Font.GothamBold
+	header.Text = "TRAIN WORKSHOP & UPGRADES"
+	header.TextColor3 = Color3.fromRGB(240, 210, 100)
+	header.TextSize = 18
+	header.TextXAlignment = Enum.TextXAlignment.Left
+	header.ZIndex = 21
+	header.Parent = upgradeShopFrame
+
+	-- Close Button (X)
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Name = "CloseBtn"
+	closeBtn.AnchorPoint = Vector2.new(1, 0)
+	closeBtn.Position = UDim2.new(1, -16, 0, 14)
+	closeBtn.Size = UDim2.fromOffset(28, 28)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.Text = "X"
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.TextSize = 14
+	closeBtn.ZIndex = 22
+	closeBtn.Parent = upgradeShopFrame
+	closeBtn.MouseButton1Click:Connect(function()
+		UIController.ToggleUpgradeShop(false)
+	end)
+
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(0, 6)
+	closeCorner.Parent = closeBtn
+
+	-- Balances Banner
+	local balancesBar = Instance.new("Frame")
+	balancesBar.Name = "BalancesBar"
+	balancesBar.Position = UDim2.fromOffset(20, 46)
+	balancesBar.Size = UDim2.new(1, -40, 0, 32)
+	balancesBar.BackgroundColor3 = Color3.fromRGB(26, 32, 42)
+	balancesBar.ZIndex = 21
+	balancesBar.Parent = upgradeShopFrame
+
+	local balCorner = Instance.new("UICorner")
+	balCorner.CornerRadius = UDim.new(0, 6)
+	balCorner.Parent = balancesBar
+
+	scrapBalanceLabel = Instance.new("TextLabel")
+	scrapBalanceLabel.Name = "ScrapBalance"
+	scrapBalanceLabel.Position = UDim2.fromOffset(12, 0)
+	scrapBalanceLabel.Size = UDim2.new(0.5, -12, 1, 0)
+	scrapBalanceLabel.BackgroundTransparency = 1
+	scrapBalanceLabel.Font = Enum.Font.GothamBold
+	scrapBalanceLabel.Text = "SCRAP BALANCE: 0"
+	scrapBalanceLabel.TextColor3 = Color3.fromRGB(120, 240, 160)
+	scrapBalanceLabel.TextSize = 13
+	scrapBalanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+	scrapBalanceLabel.ZIndex = 22
+	scrapBalanceLabel.Parent = balancesBar
+
+	artifactCountLabel = Instance.new("TextLabel")
+	artifactCountLabel.Name = "ArtifactCount"
+	artifactCountLabel.AnchorPoint = Vector2.new(1, 0)
+	artifactCountLabel.Position = UDim2.new(1, -12, 0, 0)
+	artifactCountLabel.Size = UDim2.new(0.5, -12, 1, 0)
+	artifactCountLabel.BackgroundTransparency = 1
+	artifactCountLabel.Font = Enum.Font.GothamBold
+	artifactCountLabel.Text = "ARTIFACTS RECOVERED: 0 / 4"
+	artifactCountLabel.TextColor3 = Color3.fromRGB(220, 190, 80)
+	artifactCountLabel.TextSize = 13
+	artifactCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+	artifactCountLabel.ZIndex = 22
+	artifactCountLabel.Parent = balancesBar
+
+	-- Upgrades List
+	upgradeListContainer = Instance.new("ScrollingFrame")
+	upgradeListContainer.Name = "UpgradeList"
+	upgradeListContainer.Position = UDim2.fromOffset(20, 88)
+	upgradeListContainer.Size = UDim2.new(1, -40, 1, -100)
+	upgradeListContainer.BackgroundTransparency = 1
+	upgradeListContainer.ScrollBarThickness = 6
+	upgradeListContainer.CanvasSize = UDim2.fromOffset(0, 260)
+	upgradeListContainer.ZIndex = 21
+	upgradeListContainer.Parent = upgradeShopFrame
+
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.Padding = UDim.new(0, 8)
+	listLayout.Parent = upgradeListContainer
+
+	-- Populate Upgrades from RewardConfig
+	local upgradeList = { "EmergencyLighting", "WorkbenchLocker", "ReinforcedPlating", "AdvancedEngine" }
+	for _, upId in ipairs(upgradeList) do
+		local upDef = RewardConfig.Upgrades[upId]
+		if upDef then
+			local card = Instance.new("Frame")
+			card.Name = upDef.Id
+			card.Size = UDim2.new(1, -8, 0, 56)
+			card.BackgroundColor3 = Color3.fromRGB(24, 28, 36)
+			card.ZIndex = 22
+			card.Parent = upgradeListContainer
+
+			local cardCorner = Instance.new("UICorner")
+			cardCorner.CornerRadius = UDim.new(0, 6)
+			cardCorner.Parent = card
+
+			local title = Instance.new("TextLabel")
+			title.Position = UDim2.fromOffset(12, 6)
+			title.Size = UDim2.new(1, -140, 0, 20)
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.GothamBold
+			title.Text = upDef.Name .. string.format(" (%d Scrap)", upDef.CostScrap)
+			title.TextColor3 = Color3.fromRGB(235, 235, 245)
+			title.TextSize = 13
+			title.TextXAlignment = Enum.TextXAlignment.Left
+			title.ZIndex = 23
+			title.Parent = card
+
+			local desc = Instance.new("TextLabel")
+			desc.Position = UDim2.fromOffset(12, 28)
+			desc.Size = UDim2.new(1, -140, 0, 22)
+			desc.BackgroundTransparency = 1
+			desc.Font = Enum.Font.Gotham
+			desc.Text = upDef.Description
+			desc.TextColor3 = Color3.fromRGB(150, 155, 170)
+			desc.TextSize = 11
+			desc.TextXAlignment = Enum.TextXAlignment.Left
+			desc.ZIndex = 23
+			desc.Parent = card
+
+			local buyBtn = Instance.new("TextButton")
+			buyBtn.Name = "BuyButton"
+			buyBtn.AnchorPoint = Vector2.new(1, 0.5)
+			buyBtn.Position = UDim2.new(1, -12, 0.5, 0)
+			buyBtn.Size = UDim2.fromOffset(100, 34)
+			buyBtn.BackgroundColor3 = Color3.fromRGB(45, 130, 220)
+			buyBtn.Font = Enum.Font.GothamBold
+			buyBtn.Text = "PURCHASE"
+			buyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+			buyBtn.TextSize = 12
+			buyBtn.ZIndex = 24
+			buyBtn.Parent = card
+
+			local bCorner = Instance.new("UICorner")
+			bCorner.CornerRadius = UDim.new(0, 6)
+			bCorner.Parent = buyBtn
+
+			buyBtn.MouseButton1Click:Connect(function()
+				local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+				if remotes then
+					local purchaseRemote = remotes:FindFirstChild("RequestPurchaseUpgrade") :: RemoteEvent?
+					if purchaseRemote then
+						purchaseRemote:FireServer(upDef.Id)
+					end
+				end
+			end)
+		end
+	end
 end
 
 return UIController

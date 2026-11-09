@@ -21,6 +21,8 @@ local REQUIRED_REMOTES = {
 	"Notification",
 	"RequestEquipment",
 	"RequestDestinationVote",
+	"RequestPurchaseUpgrade",
+	"ProfileUpdated",
 }
 
 for _, remoteName in ipairs(REQUIRED_REMOTES) do
@@ -74,7 +76,6 @@ requestEquipmentRemote.OnServerEvent:Connect(function(player: Player, slotIndex:
 	local validId, id = SecurityService.ValidateString(itemId, 32)
 	if not validSlot or not slot or not validId then return end
 
-	-- Authoritative inventory equipment change
 	InventoryService.SetSlotItem(player, slot, id)
 end)
 
@@ -85,6 +86,24 @@ requestDestinationVoteRemote.OnServerEvent:Connect(function(player: Player, stat
 	if not valid or not str then return end
 
 	log:Info("Player voted for destination", { Player = player.Name, Destination = str })
+end)
+
+local requestPurchaseUpgradeRemote = remotesFolder:WaitForChild("RequestPurchaseUpgrade") :: RemoteEvent
+requestPurchaseUpgradeRemote.OnServerEvent:Connect(function(player: Player, upgradeId: any)
+	if not SecurityService.CheckRateLimit(player, 2) then return end
+	local valid, id = SecurityService.ValidateString(upgradeId, 32)
+	if not valid or not id then return end
+
+	local success, message = PlayerDataService.PurchaseUpgrade(player, id)
+	local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?
+	if notifRemote then
+		notifRemote:FireClient(player, {
+			MessageKey = "UPGRADE_PURCHASE",
+			MessageText = message,
+			Severity = success and "Success" or "Warning",
+			Duration = 4,
+		})
+	end
 end)
 
 -- Construct or verify Train Hub geometry in Workspace.World.Hub

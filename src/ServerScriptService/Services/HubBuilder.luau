@@ -1,6 +1,6 @@
 --!strict
 -- HubBuilder.luau
--- Procedural architect for the Train Hub, Passenger Carriage, and Platform
+-- Procedural architect for the Train Hub, Passenger Carriage, Platform, and Upgrade Terminal
 
 local Workspace = game:GetService("Workspace")
 
@@ -196,7 +196,7 @@ function HubBuilder.BuildHub(): Folder
 		Enum.Material.Metal
 	)
 
-	-- Outer Wall (Far side from platform, with small windows)
+	-- Outer Wall
 	createPart(
 		train,
 		"FarWall",
@@ -225,7 +225,6 @@ function HubBuilder.BuildHub(): Folder
 	)
 
 	-- Platform-facing Wall with Open Passenger Boarding Doorway
-	-- Left wall section
 	createPart(
 		train,
 		"PlatformWallLeft",
@@ -234,7 +233,6 @@ function HubBuilder.BuildHub(): Folder
 		Color3.fromRGB(30, 34, 40),
 		Enum.Material.Metal
 	)
-	-- Right wall section
 	createPart(
 		train,
 		"PlatformWallRight",
@@ -243,7 +241,6 @@ function HubBuilder.BuildHub(): Folder
 		Color3.fromRGB(30, 34, 40),
 		Enum.Material.Metal
 	)
-	-- Doorway lintel
 	createPart(
 		train,
 		"DoorLintel",
@@ -289,7 +286,7 @@ function HubBuilder.BuildHub(): Folder
 		end
 	end
 
-	-- Destination & Expedition Status Board inside train
+	-- Departure Board inside train
 	local boardPart = createPart(
 		train,
 		"DepartureBoard",
@@ -325,7 +322,7 @@ function HubBuilder.BuildHub(): Folder
 	boardStatus.Text = "DESTINATION: Forgotten Terminal\nPREPARE CREW"
 	boardStatus.Parent = boardGui
 
-	-- Equipment Locker Locker interactable
+	-- Equipment Locker interactable
 	local lockerPart = createPart(
 		train,
 		"EquipmentLocker",
@@ -342,6 +339,46 @@ function HubBuilder.BuildHub(): Folder
 	prompt.RequiresLineOfSight = false
 	prompt.HoldDuration = 0.2
 	prompt.Parent = lockerPart
+
+	-- Train Upgrade Workbench & Terminal
+	local upgradeTerminal = createPart(
+		train,
+		"UpgradeTerminal",
+		Vector3.new(3, 4, 3),
+		CFrame.new(trainX + 3.5, 5, 20),
+		Color3.fromRGB(45, 60, 80),
+		Enum.Material.Metal
+	)
+	local upgradePrompt = Instance.new("ProximityPrompt")
+	upgradePrompt.Name = "OpenUpgradeTerminalPrompt"
+	upgradePrompt.ActionText = "Access Upgrades & Scrap"
+	upgradePrompt.ObjectText = "Train Workshop Terminal"
+	upgradePrompt.MaxActivationDistance = 10
+	upgradePrompt.RequiresLineOfSight = false
+	upgradePrompt.HoldDuration = 0.3
+	upgradePrompt.Parent = upgradeTerminal
+
+	local termScreen = createPart(
+		upgradeTerminal,
+		"Screen",
+		Vector3.new(0.2, 1.8, 2.4),
+		CFrame.new(trainX + 2.3, 6, 20),
+		Color3.fromRGB(20, 25, 30),
+		Enum.Material.SmoothPlastic
+	)
+	local termGui = Instance.new("SurfaceGui")
+	termGui.Face = Enum.NormalId.Left
+	termGui.CanvasSize = Vector2.new(240, 180)
+	termGui.Parent = termScreen
+
+	local termLabel = Instance.new("TextLabel")
+	termLabel.Size = UDim2.fromScale(1, 1)
+	termLabel.BackgroundColor3 = Color3.fromRGB(15, 20, 28)
+	termLabel.TextColor3 = Color3.fromRGB(100, 220, 255)
+	termLabel.Font = Enum.Font.Code
+	termLabel.TextSize = 18
+	termLabel.Text = "[WORKSHOP]\nSCRAP TERMINAL\nPRESS (E)"
+	termLabel.Parent = termGui
 
 	-- 4. Create Spawn Locations in Hub
 	local spawnsFolder = Instance.new("Folder")
@@ -364,7 +401,7 @@ function HubBuilder.BuildHub(): Folder
 		spawnPart.Parent = spawnsFolder
 	end
 
-	log:Info("Train Hub successfully built and configured.")
+	log:Info("Train Hub successfully built and configured with Workshop Terminal.")
 	return hub
 end
 

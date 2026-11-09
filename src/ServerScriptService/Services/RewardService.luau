@@ -22,7 +22,8 @@ function RewardService.AwardExpeditionRewards(
 	player: Player,
 	missionCompleted: boolean,
 	extracted: boolean,
-	extraScrap: number?
+	extraScrap: number?,
+	collectedArtifacts: { string }?
 ): number
 	if not grantedRounds[roundId] then
 		grantedRounds[roundId] = {}
@@ -54,6 +55,12 @@ function RewardService.AwardExpeditionRewards(
 			profile.Statistics.Runs += 1
 			if extracted then
 				profile.Statistics.SuccessfulEscapes += 1
+				-- Grant extracted artifacts
+				if collectedArtifacts then
+					for _, artifactId in ipairs(collectedArtifacts) do
+						PlayerDataService.AddArtifact(player, artifactId)
+					end
+				end
 			end
 			if missionCompleted then
 				profile.Statistics.ObjectivesCompleted += 1
@@ -74,4 +81,3 @@ function RewardService.AwardExpeditionRewards(
 end
 
 return RewardService
-

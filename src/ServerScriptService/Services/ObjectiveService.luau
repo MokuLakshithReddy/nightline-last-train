@@ -1,6 +1,6 @@
 --!strict
 -- ObjectiveService.luau
--- Authoritative objective mechanics, physical entity spawning, and interaction routing
+-- Authoritative objective mechanics, physical entity spawning, artifact drops, and interaction routing
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local GameTypes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"):WaitForChild("GameTypes"))
 local ObjectiveConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("ObjectiveConfig"))
+local RewardConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("RewardConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
 local Signal = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Signal"))
 local log = Logger.new("ObjectiveService")
@@ -22,6 +23,7 @@ local notificationRemote: RemoteEvent? = nil
 -- Runtime objective entity tracking
 local spawnedEntities: { Instance } = {}
 local carryingCargo: { [number]: Instance } = {}
+local collectedArtifacts: { [number]: { string } } = {}
 
 local ObjectiveService = {
 	OnMissionCompleted = Signal.new(),
@@ -49,6 +51,10 @@ function ObjectiveService.Init()
 	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
 
 	ObjectiveService.BindInteractions()
+end
+
+function ObjectiveService.GetCollectedArtifacts(player: Player): { string }
+	return collectedArtifacts[player.UserId] or {}
 end
 
 function ObjectiveService.BindInteractions()
@@ -89,7 +95,6 @@ function ObjectiveService.BindInteractions()
 			InventoryService.ConsumeMissionItem(player, "Fuse")
 			prompt.Enabled = false
 
-			-- Visual change: Indicator turns green
 			local indicator = targetPart:FindFirstChild("IndicatorLight") :: BasePart?
 			if indicator then
 				indicator.Color = Color3.fromRGB(50, 240, 80)
@@ -112,7 +117,6 @@ function ObjectiveService.BindInteractions()
 				return
 			end
 
-			-- Attach visual crate to player's torso
 			local character = player.Character
 			if character and (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")) then
 				local torso = (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")) :: BasePart
@@ -160,7 +164,6 @@ function ObjectiveService.BindInteractions()
 				carryingCargo[player.UserId] = nil
 			end
 
-			-- Place secured crate visually on pallet
 			local deliveredCrate = createPart(
 				targetPart,
 				"DeliveredCrate",
@@ -178,7 +181,6 @@ function ObjectiveService.BindInteractions()
 			if not activeMission or activeMission.Type ~= "RepairSignal" then return end
 			prompt.Enabled = false
 
-			-- Visual change: Screen turns green
 			local monitor = targetPart:FindFirstChild("MonitorScreen") :: BasePart?
 			if monitor then
 				monitor.Color = Color3.fromRGB(50, 220, 80)
@@ -210,6 +212,29 @@ function ObjectiveService.BindInteractions()
 					Duration = 3,
 				})
 			end
+
+		-- 7. RARE ARTIFACT DISCOVERY
+		elseif promptName == "PickUpArtifactPrompt" then
+			local artifactId = prompt:GetAttribute("ArtifactId") :: string?
+			if not artifactId then return end
+
+			targetPart:Destroy()
+			if not collectedArtifacts[player.UserId] then
+				collectedArtifacts[player.UserId] = {}
+			end
+			table.insert(collectedArtifacts[player.UserId], artifactId)
+
+			local artDef = RewardConfig.Artifacts[artifactId]
+			local name = artDef and artDef.Name or artifactId
+
+			if notificationRemote then
+				notificationRemote:FireClient(player, {
+					MessageKey = "ARTIFACT_FOUND",
+					MessageText = string.format("FOUND ARTIFACT: %s! Extract safely to keep it.", name),
+					Severity = "Success",
+					Duration = 5,
+				})
+			end
 		end
 	end)
 end
@@ -238,6 +263,7 @@ function ObjectiveService.StartMission(missionType: GameTypes.MissionType?): Gam
 
 	ObjectiveService.SpawnObjectiveEntities(activeMission.Type)
 	ObjectiveService.SpawnOptionalScrapCaches()
+	ObjectiveService.SpawnArtifacts()
 
 	ObjectiveService.Broadcast()
 	return activeMission
@@ -254,7 +280,6 @@ function ObjectiveService.SpawnObjectiveEntities(missionType: GameTypes.MissionT
 	table.insert(spawnedEntities, objectiveFolder)
 
 	if missionType == "RestorePower" then
-		-- Spawn 3 Fuse pickups
 		local fuseLocations = {
 			Vector3.new(45, 2, 10),
 			Vector3.new(78, 2, 22),
@@ -282,7 +307,6 @@ function ObjectiveService.SpawnObjectiveEntities(missionType: GameTypes.MissionT
 		end
 
 	elseif missionType == "RecoverCargo" then
-		-- Spawn 2 Cargo Containers in Cargo Storage
 		local crateLocations = {
 			Vector3.new(35, 2, 50),
 			Vector3.new(48, 2, 62),
@@ -351,6 +375,37 @@ function ObjectiveService.SpawnOptionalScrapCaches()
 	end
 end
 
+function ObjectiveService.SpawnArtifacts()
+	local offset = GameConfig.World.ActiveStationOffset
+	local station = Workspace:WaitForChild("World"):WaitForChild("Runtime"):FindFirstChild("ActiveStation")
+	if not station then return end
+
+	local artifactFolder = Instance.new("Folder")
+	artifactFolder.Name = "Artifacts"
+	artifactFolder.Parent = station
+	table.insert(spawnedEntities, artifactFolder)
+
+	-- Spawn SignalWhistle in Underground Tunnel
+	local whistlePart = createPart(
+		artifactFolder,
+		"Artifact_SignalWhistle",
+		Vector3.new(0.8, 0.4, 0.8),
+		CFrame.new(offset + Vector3.new(42, -3.2, -80)),
+		Color3.fromRGB(240, 240, 255),
+		Enum.Material.Neon
+	)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "PickUpArtifactPrompt"
+	prompt:SetAttribute("ArtifactId", "SignalWhistle")
+	prompt.ActionText = "Collect Silver Whistle"
+	prompt.ObjectText = "Rare Relic: Silver Signal Whistle"
+	prompt.MaxActivationDistance = 8
+	prompt.RequiresLineOfSight = false
+	prompt.HoldDuration = 0.5
+	prompt.Parent = whistlePart
+	table.insert(spawnedEntities, whistlePart)
+end
+
 function ObjectiveService.GetActiveMission(): GameTypes.MissionState?
 	return activeMission
 end
@@ -400,6 +455,8 @@ function ObjectiveService.Reset()
 		end
 		carryingCargo[userId] = nil
 	end
+
+	table.clear(collectedArtifacts)
 
 	if objectiveUpdatedRemote then
 		objectiveUpdatedRemote:FireAllClients("", 0, 0, false)

@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local GameTypes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"):WaitForChild("GameTypes"))
+local RewardConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("RewardConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
 local log = Logger.new("PlayerDataService")
 
@@ -34,6 +35,8 @@ local dataStore: DataStore? = nil
 local profilesCache: { [number]: GameTypes.PlayerProfile } = {}
 local isDirty: { [number]: boolean } = {}
 local loadFailed: { [number]: boolean } = {}
+
+local profileUpdatedRemote: RemoteEvent? = nil
 
 local PlayerDataService = {}
 
@@ -91,6 +94,16 @@ end
 
 function PlayerDataService.Init()
 	log:Info("Initializing PlayerDataService...")
+
+	local remotes = ReplicatedStorage:WaitForChild("Remotes")
+	local existing = remotes:FindFirstChild("ProfileUpdated") :: RemoteEvent?
+	if not existing then
+		existing = Instance.new("RemoteEvent")
+		existing.Name = "ProfileUpdated"
+		existing.Parent = remotes
+	end
+	profileUpdatedRemote = existing
+
 	if not RunService:IsStudio() or pcall(function() return DataStoreService:GetDataStore("TestAccess") end) then
 		local success, ds = pcall(function()
 			return DataStoreService:GetDataStore(DATASTORE_NAME)
@@ -106,7 +119,8 @@ function PlayerDataService.Init()
 	end
 
 	Players.PlayerAdded:Connect(function(player)
-		PlayerDataService.LoadProfile(player)
+		local profile = PlayerDataService.LoadProfile(player)
+		PlayerDataService.Sync(player, profile)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
@@ -166,7 +180,63 @@ function PlayerDataService.AddScrap(player: Player, amount: number): boolean
 	profile.Scrap += amount
 	isDirty[player.UserId] = true
 	log:Info("Granted scrap to player", { UserId = player.UserId, Added = amount, Total = profile.Scrap })
+	PlayerDataService.Sync(player, profile)
 	return true
+end
+
+function PlayerDataService.AddArtifact(player: Player, artifactId: string): boolean
+	local profile = profilesCache[player.UserId]
+	if not profile then return false end
+
+	if not profile.Artifacts[artifactId] then
+		profile.Artifacts[artifactId] = true
+		isDirty[player.UserId] = true
+		log:Info("Artifact unlocked for player", { UserId = player.UserId, Artifact = artifactId })
+		PlayerDataService.Sync(player, profile)
+		return true
+	end
+	return false
+end
+
+function PlayerDataService.PurchaseUpgrade(player: Player, upgradeId: string): (boolean, string)
+	local profile = profilesCache[player.UserId]
+	if not profile then
+		return false, "Profile not loaded"
+	end
+
+	local upgradeDef = RewardConfig.Upgrades[upgradeId]
+	if not upgradeDef then
+		return false, "Invalid upgrade ID"
+	end
+
+	if profile.TrainUpgrades[upgradeId] then
+		return false, "Upgrade already purchased"
+	end
+
+	if profile.Scrap < upgradeDef.CostScrap then
+		return false, "Insufficient Scrap balance"
+	end
+
+	-- Deduct scrap and mark owned
+	profile.Scrap -= upgradeDef.CostScrap
+	profile.TrainUpgrades[upgradeId] = true
+	isDirty[player.UserId] = true
+
+	log:Info("Player purchased train upgrade", {
+		Player = player.Name,
+		Upgrade = upgradeId,
+		Cost = upgradeDef.CostScrap,
+		RemainingScrap = profile.Scrap,
+	})
+
+	PlayerDataService.Sync(player, profile)
+	return true, "Upgrade successfully purchased!"
+end
+
+function PlayerDataService.Sync(player: Player, profile: GameTypes.PlayerProfile)
+	if profileUpdatedRemote then
+		profileUpdatedRemote:FireClient(player, profile)
+	end
 end
 
 function PlayerDataService.SaveProfile(player: Player)

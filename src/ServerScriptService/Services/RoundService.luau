@@ -183,6 +183,21 @@ function RoundService.StartGameLoop()
 				RoundService.TransitionTo("EXPLORATION")
 
 			elseif currentState == "EXPLORATION" then
+				StationService.LoadStation(currentStationId)
+
+				local missions: { GameTypes.MissionType } = { "RestorePower", "RecoverCargo", "RepairSignal" }
+				local missionIndex = ((roundCounter - 1) % #missions) + 1
+				local selectedMission = missions[missionIndex]
+				local activeMission = ObjectiveService.StartMission(selectedMission)
+
+				MonsterService.SpawnMonster()
+
+				local spawnPos = StationService.GetSpawnPosition()
+				for _, player in pairs(activeRoster) do
+					teleportPlayer(player, spawnPos)
+				end
+
+				broadcastNotification(string.format("Arrived at The Forgotten Terminal! Objective: %s", activeMission.Title), "Warning")
 				RoundService.WaitForPhase()
 				RoundService.TransitionTo("EXTRACTION")
 
@@ -191,10 +206,36 @@ function RoundService.StartGameLoop()
 				RoundService.TransitionTo("RETURN")
 
 			elseif currentState == "RETURN" then
+				MonsterService.DespawnMonster()
+				for userId, player in pairs(activeRoster) do
+					if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+						local pos = (player.Character.HumanoidRootPart :: BasePart).Position
+						if StationService.IsInsideExtractionZone(pos) then
+							extractedPlayers[userId] = true
+						end
+					end
+					teleportToHub(player)
+				end
+				broadcastNotification("Train departing station! Returning to safe haven...", "Success")
 				RoundService.WaitForPhase()
 				RoundService.TransitionTo("RESULTS")
 
 			elseif currentState == "RESULTS" then
+				local mission = ObjectiveService.GetActiveMission()
+				local missionDone = mission ~= nil and mission.IsComplete
+
+				for userId, player in pairs(activeRoster) do
+					local didExtract = extractedPlayers[userId] == true
+					local artifacts = ObjectiveService.GetCollectedArtifacts(player)
+					RewardService.AwardExpeditionRewards(currentRoundId, player, missionDone, didExtract, 0, artifacts)
+				end
+
+				if missionDone then
+					broadcastNotification("EXPEDITION COMPLETE: Mission targets secured!", "Success")
+				else
+					broadcastNotification("EXPEDITION OVER: Survivors retrieved.", "Info")
+				end
+
 				RoundService.WaitForPhase()
 				RoundService.CleanupRound()
 				RoundService.TransitionTo("WAITING")
@@ -228,58 +269,8 @@ function RoundService.TransitionTo(newState: GameTypes.RoundState)
 	elseif newState == "TRAVEL" then
 		broadcastNotification("Train departing from terminal! In transit to Station 001...", "Alert")
 
-	elseif newState == "EXPLORATION" then
-		-- 1. Load Station 001 level geometry
-		StationService.LoadStation(currentStationId)
-
-		-- 2. Select mission template from the 3 templates
-		local missions: { GameTypes.MissionType } = { "RestorePower", "RecoverCargo", "RepairSignal" }
-		local missionIndex = ((roundCounter - 1) % #missions) + 1
-		local selectedMission = missions[missionIndex]
-		local activeMission = ObjectiveService.StartMission(selectedMission)
-
-		-- 3. Standby monster
-		MonsterService.SpawnMonster()
-
-		-- 4. Deploy players to station arrival platform
-		local spawnPos = StationService.GetSpawnPosition()
-		for _, player in pairs(activeRoster) do
-			teleportPlayer(player, spawnPos)
-		end
-
-		broadcastNotification(string.format("Arrived at The Forgotten Terminal! Objective: %s", activeMission.Title), "Warning")
-
 	elseif newState == "EXTRACTION" then
 		broadcastNotification("WARNING: Last train departure in 60s! Get to the extraction gate!", "Alert")
-
-	elseif newState == "RETURN" then
-		MonsterService.DespawnMonster()
-		-- Determine extraction status
-		for userId, player in pairs(activeRoster) do
-			if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-				local pos = (player.Character.HumanoidRootPart :: BasePart).Position
-				if StationService.IsInsideExtractionZone(pos) then
-					extractedPlayers[userId] = true
-				end
-			end
-			teleportToHub(player)
-		end
-		broadcastNotification("Train departing station! Returning to safe haven...", "Success")
-
-	elseif newState == "RESULTS" then
-		local mission = ObjectiveService.GetActiveMission()
-		local missionDone = mission ~= nil and mission.IsComplete
-
-		for userId, player in pairs(activeRoster) do
-			local didExtract = extractedPlayers[userId] == true
-			RewardService.AwardExpeditionRewards(currentRoundId, player, missionDone, didExtract, 0)
-		end
-
-		if missionDone then
-			broadcastNotification("EXPEDITION COMPLETE: Mission targets secured!", "Success")
-		else
-			broadcastNotification("EXPEDITION OVER: Survivors retrieved.", "Info")
-		end
 	end
 
 	broadcastState()
