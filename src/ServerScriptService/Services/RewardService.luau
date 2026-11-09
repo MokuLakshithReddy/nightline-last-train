@@ -44,6 +44,15 @@ function RewardService.AwardExpeditionRewards(
 		return 0
 	end
 
+	-- Check if profile is writable (read-only profiles from lock contention must not receive unpersistable grants)
+	if not PlayerDataService.IsProfileWritable(player) then
+		log:Warn("Cannot award expedition rewards; profile is read-only (session lock contention)", {
+			UserId = player.UserId,
+			Player = player.Name,
+		})
+		return 0
+	end
+
 	-- Persistent Profile-Level Idempotency Check (Problem 5)
 	if profile.LastProcessedRoundId == roundId then
 		log:Warn("Expedition round already committed to persistent profile; skipping duplicate grant", {
