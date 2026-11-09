@@ -62,6 +62,10 @@ local function reconcileProfile(loaded: any): GameTypes.PlayerProfile
 		return profile
 	end
 
+	if type(loaded.SchemaVersion) == "number" then
+		profile.SchemaVersion = loaded.SchemaVersion
+	end
+
 	if type(loaded.Scrap) == "number" and loaded.Scrap >= 0 then
 		profile.Scrap = loaded.Scrap
 	end
@@ -79,6 +83,20 @@ local function reconcileProfile(loaded: any): GameTypes.PlayerProfile
 			end
 		end
 	end
+	if type(loaded.OwnedCosmetics) == "table" then
+		for k, v in pairs(loaded.OwnedCosmetics) do
+			if type(k) == "string" and v == true then
+				profile.OwnedCosmetics[k] = true
+			end
+		end
+	end
+	if type(loaded.EquippedCosmetics) == "table" then
+		for k, v in pairs(loaded.EquippedCosmetics) do
+			if type(k) == "string" and type(v) == "string" then
+				profile.EquippedCosmetics[k] = v
+			end
+		end
+	end
 	if type(loaded.Artifacts) == "table" then
 		for k, v in pairs(loaded.Artifacts) do
 			if type(k) == "string" and v == true then
@@ -87,10 +105,10 @@ local function reconcileProfile(loaded: any): GameTypes.PlayerProfile
 		end
 	end
 	if type(loaded.Statistics) == "table" then
-		profile.Statistics.Runs = loaded.Statistics.Runs or 0
-		profile.Statistics.SuccessfulEscapes = loaded.Statistics.SuccessfulEscapes or 0
-		profile.Statistics.ObjectivesCompleted = loaded.Statistics.ObjectivesCompleted or 0
-		profile.Statistics.ItemsRecovered = loaded.Statistics.ItemsRecovered or 0
+		profile.Statistics.Runs = (type(loaded.Statistics.Runs) == "number" and loaded.Statistics.Runs >= 0) and loaded.Statistics.Runs or 0
+		profile.Statistics.SuccessfulEscapes = (type(loaded.Statistics.SuccessfulEscapes) == "number" and loaded.Statistics.SuccessfulEscapes >= 0) and loaded.Statistics.SuccessfulEscapes or 0
+		profile.Statistics.ObjectivesCompleted = (type(loaded.Statistics.ObjectivesCompleted) == "number" and loaded.Statistics.ObjectivesCompleted >= 0) and loaded.Statistics.ObjectivesCompleted or 0
+		profile.Statistics.ItemsRecovered = (type(loaded.Statistics.ItemsRecovered) == "number" and loaded.Statistics.ItemsRecovered >= 0) and loaded.Statistics.ItemsRecovered or 0
 	end
 	if type(loaded.SessionLock) == "table" then
 		profile.SessionLock = {
@@ -247,7 +265,24 @@ function PlayerDataService.GetProfile(player: Player): GameTypes.PlayerProfile?
 	return profilesCache[player.UserId]
 end
 
+-- Centralized check verifying the profile is active and writable (not marked read-only due to lock failure)
+function PlayerDataService.IsProfileWritable(player: Player): boolean
+	local userId = player.UserId
+	if loadFailed[userId] == true then
+		return false
+	end
+	if profilesCache[userId] == nil then
+		return false
+	end
+	return true
+end
+
 function PlayerDataService.AddScrap(player: Player, amount: number): boolean
+	if not PlayerDataService.IsProfileWritable(player) then
+		log:Warn("Rejected AddScrap: profile is read-only or not loaded", { UserId = player.UserId })
+		return false
+	end
+
 	local profile = profilesCache[player.UserId]
 	if not profile or amount <= 0 then return false end
 
@@ -259,6 +294,11 @@ function PlayerDataService.AddScrap(player: Player, amount: number): boolean
 end
 
 function PlayerDataService.DeductScrap(player: Player, amount: number): boolean
+	if not PlayerDataService.IsProfileWritable(player) then
+		log:Warn("Rejected DeductScrap: profile is read-only or not loaded", { UserId = player.UserId })
+		return false
+	end
+
 	local profile = profilesCache[player.UserId]
 	if not profile or amount <= 0 or profile.Scrap < amount then
 		return false
@@ -272,6 +312,11 @@ function PlayerDataService.DeductScrap(player: Player, amount: number): boolean
 end
 
 function PlayerDataService.AddArtifact(player: Player, artifactId: string): boolean
+	if not PlayerDataService.IsProfileWritable(player) then
+		log:Warn("Rejected AddArtifact: profile is read-only or not loaded", { UserId = player.UserId })
+		return false
+	end
+
 	local profile = profilesCache[player.UserId]
 	if not profile then return false end
 
@@ -286,6 +331,10 @@ function PlayerDataService.AddArtifact(player: Player, artifactId: string): bool
 end
 
 function PlayerDataService.PurchaseUpgrade(player: Player, upgradeId: string): (boolean, string)
+	if not PlayerDataService.IsProfileWritable(player) then
+		return false, "Profile is currently read-only due to lock failure; purchases disabled"
+	end
+
 	local profile = profilesCache[player.UserId]
 	if not profile then
 		return false, "Profile not loaded"
@@ -317,6 +366,52 @@ function PlayerDataService.PurchaseUpgrade(player: Player, upgradeId: string): (
 
 	PlayerDataService.Sync(player, profile)
 	return true, "Upgrade successfully purchased!"
+end
+
+function PlayerDataService.AddCosmetic(player: Player, cosmeticId: string): boolean
+	if not PlayerDataService.IsProfileWritable(player) then
+		log:Warn("Rejected AddCosmetic: profile is read-only or not loaded", { UserId = player.UserId })
+		return false
+	end
+
+	local profile = profilesCache[player.UserId]
+	if not profile then return false end
+
+	if not profile.OwnedCosmetics[cosmeticId] then
+		profile.OwnedCosmetics[cosmeticId] = true
+		isDirty[player.UserId] = true
+		log:Info("Cosmetic unlocked for player", { UserId = player.UserId, Cosmetic = cosmeticId })
+		PlayerDataService.Sync(player, profile)
+		return true
+	end
+	return false
+end
+
+function PlayerDataService.EquipCosmetic(player: Player, slot: string, cosmeticId: string?): boolean
+	if not PlayerDataService.IsProfileWritable(player) then
+		log:Warn("Rejected EquipCosmetic: profile is read-only or not loaded", { UserId = player.UserId })
+		return false
+	end
+
+	local profile = profilesCache[player.UserId]
+	if not profile then return false end
+
+	if cosmeticId == nil then
+		profile.EquippedCosmetics[slot] = nil
+		isDirty[player.UserId] = true
+		PlayerDataService.Sync(player, profile)
+		return true
+	end
+
+	if not profile.OwnedCosmetics[cosmeticId] then
+		log:Warn("Player attempted to equip unowned cosmetic", { Player = player.Name, Cosmetic = cosmeticId })
+		return false
+	end
+
+	profile.EquippedCosmetics[slot] = cosmeticId
+	isDirty[player.UserId] = true
+	PlayerDataService.Sync(player, profile)
+	return true
 end
 
 function PlayerDataService.Sync(player: Player, profile: GameTypes.PlayerProfile)
