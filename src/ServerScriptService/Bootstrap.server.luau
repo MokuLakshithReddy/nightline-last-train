@@ -37,6 +37,7 @@ for _, remoteName in ipairs(REQUIRED_REMOTES) do
 end
 
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
+local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local log = Logger.new("ServerBootstrap")
 
 log:Info("==================================================")
@@ -141,6 +142,57 @@ requestPurchaseUpgradeRemote.OnServerEvent:Connect(function(player: Player, upgr
 	if not SecurityService.CheckRateLimit(player, 2) then return end
 	local valid, id = SecurityService.ValidateString(upgradeId, 32)
 	if not valid or not id then return end
+
+	-- 1. Validate character and alive state
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?
+		if notifRemote then
+			notifRemote:FireClient(player, {
+				MessageKey = "UPGRADE_REJECTED",
+				MessageText = "You must be alive to access the upgrade terminal.",
+				Severity = "Warning",
+				Duration = 3,
+			})
+		end
+		return
+	end
+
+	-- 2. Phase restriction: purchases only permitted in Hub preparation phases
+	local currentPhase = RoundService.GetCurrentState()
+	local allowedPhase = (currentPhase == "WAITING" or currentPhase == "INTERMISSION" or currentPhase == "BOARDING")
+	if not allowedPhase then
+		local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?
+		if notifRemote then
+			notifRemote:FireClient(player, {
+				MessageKey = "UPGRADE_RESTRICTED",
+				MessageText = "Upgrades can only be purchased in the Hub before departure!",
+				Severity = "Warning",
+				Duration = 3,
+			})
+		end
+		return
+	end
+
+	-- 3. Proximity validation: must be within interaction range of the Train Workshop Terminal
+	local terminalPart = HubBuilder.GetUpgradeTerminal()
+	local terminalPosition = terminalPart and terminalPart.Position or HubBuilder.TerminalPosition
+	local prompt = terminalPart and terminalPart:FindFirstChildWhichIsA("ProximityPrompt")
+	local maxDistance = prompt and (prompt.MaxActivationDistance + 4) or GameConfig.Security.MaxInteractionDistance
+
+	if not SecurityService.ValidateDistance(player, terminalPosition, maxDistance) then
+		local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?
+		if notifRemote then
+			notifRemote:FireClient(player, {
+				MessageKey = "UPGRADE_TOO_FAR",
+				MessageText = "You are too far from the Train Workshop Terminal.",
+				Severity = "Warning",
+				Duration = 3,
+			})
+		end
+		return
+	end
 
 	local success, message = PlayerDataService.PurchaseUpgrade(player, id)
 	local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?

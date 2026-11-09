@@ -9,6 +9,28 @@ local log = Logger.new("HubBuilder")
 
 local HubBuilder = {}
 
+HubBuilder.TerminalPosition = Vector3.new(-6.5, 5, 20)
+
+local cachedTerminal: BasePart? = nil
+
+function HubBuilder.GetUpgradeTerminal(): BasePart?
+	if cachedTerminal and cachedTerminal.Parent then
+		return cachedTerminal
+	end
+	local world = Workspace:FindFirstChild("World") :: Folder?
+	if not world then return nil end
+	local hub = world:FindFirstChild("Hub") :: Folder?
+	if not hub then return nil end
+	local train = hub:FindFirstChild("Train") :: Instance?
+	if not train then return nil end
+	local term = train:FindFirstChild("UpgradeTerminal")
+	if term and term:IsA("BasePart") then
+		cachedTerminal = term
+		return term
+	end
+	return nil
+end
+
 local function createPart(parent: Instance, name: string, size: Vector3, cframe: CFrame, color: Color3, material: Enum.Material): Part
 	local part = Instance.new("Part")
 	part.Name = name
@@ -349,6 +371,7 @@ function HubBuilder.BuildHub(): Folder
 		Color3.fromRGB(45, 60, 80),
 		Enum.Material.Metal
 	)
+	cachedTerminal = upgradeTerminal
 	local upgradePrompt = Instance.new("ProximityPrompt")
 	upgradePrompt.Name = "OpenUpgradeTerminalPrompt"
 	upgradePrompt.ActionText = "Access Upgrades & Scrap"
