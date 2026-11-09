@@ -5,9 +5,10 @@
 - **Current Status:** 🟡 Feature-Complete & Automated CI Verified (Pending Manual Multi-Client Studio Staging)
 - **Codebase Health:**
   - Automated CI Workflow: Active (`.github/workflows/ci.yml`) - passing on GitHub Actions (Runs #20, #21, #22)
+  - Branch Protection: Enforced on `main` (pull request required, strict `Lint, Build & Test` CI checks required, direct pushes blocked)
   - Luau Linter (Selene 0.32.0): 0 errors, 0 warnings across all source modules
   - Rojo Place Compilation (v7.4.4): Verified (`Nightline.rbxlx` generated cleanly)
-  - Regression Test Suite (`tests/run_tests.py`): 23/23 automated test suites passing
+  - Regression Test Suite (`tests/run_tests.py`): 24/24 automated test suites passing
 - **Completed Milestones:**
   - Milestone 0: Environment, Tooling & Foundation (Automated CI Verified)
   - Milestone 1: Train Hub & Round Foundation (Automated CI Verified)
@@ -20,7 +21,7 @@
 
 ---
 
-## Automated Test Suite Coverage (23/23 Passing)
+## Automated Test Suite Coverage (24/24 Passing)
 
 The automated regression test suite (`tests/run_tests.py`) validates core server authority, game loop mechanics, persistence integrity, and security invariants in CI prior to merge:
 
@@ -49,6 +50,7 @@ The automated regression test suite (`tests/run_tests.py`) validates core server
 | **FIX-T32** | Concurrency Locks & Exception Safety | Per-receipt (`inFlightReceipts`) and per-player (`inFlightPlayers`) concurrency locks preventing duplicate purchase grants | ✅ Passed |
 | **FIX-T33** | DataStore Fail-Closed Mode | Differentiates intentional Studio mock mode from live DataStore failure; marks profiles non-writable and preserves dirty state on storage outage | ✅ Passed |
 | **FIX-T34** | Synchronized Server Clock | Eliminates process-local `os.clock()` comparisons across server and client; uses `Workspace:GetServerTimeNow()` for authoritative deadlines and bounded non-negative HUD countdowns | ✅ Passed |
+| **FIX-T35** | CI Contracts & Branch Protection | Gated by GitHub branch protection on `main`; verifies CI job name `Lint, Build & Test` matches required checks and validates lint/build/test pipeline triggers | ✅ Passed |
 
 ---
 
@@ -78,7 +80,7 @@ The automated regression test suite (`tests/run_tests.py`) validates core server
    - Results are automatically recorded and preserved in GitHub Actions workflow runs (e.g., Runs #20, #21, #22).
 2. **Manual Pre-Flight Staging (Studio Multi-Client Session):**
    - **Status:** ⏳ **PENDING PHYSICAL STUDIO TESTING**
-   - Prior to publishing the place to public production on the Roblox Creator Dashboard, manual testing must be completed following `docs/RELEASE_GUIDE.md` Section 3.2:
+   - Prior to publishing the place to public production on the Roblox Creator Dashboard, manual testing must be completed following `docs/RELEASE_GUIDE.md` Section 3.3:
      - 6-client local server simulation in Roblox Studio.
      - Physical gamepad and touch device interaction testing.
      - Spatial audio balance and 3D positional reverb acoustics.
