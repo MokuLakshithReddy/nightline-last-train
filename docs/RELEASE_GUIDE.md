@@ -10,7 +10,7 @@
 
 ### Experience Description (Copy & Paste for Roblox Experience Page):
 ```text
-🚂 "Every stop is a risk. Every return is a reward."
+🚆 "Every stop is a risk. Every return is a reward."
 
 Board the last train traversing a forgotten subterranean transit network. Form a crew or venture solo into dark, abandoned stations, secure critical supplies, restore power grids, and recover lost cargo.
 
@@ -51,14 +51,40 @@ Will you make it back before the last train departs?
 
 ---
 
-## 3. Pre-Launch Verification Sign-Off
+## 3. Evidence-Based Release Verification Protocol
 
-- [x] Solo expeditions complete smoothly from start to finish.
-- [x] Multi-player crews (up to 6) roster and extract cleanly.
-- [x] Late-joining players spawn in safe Hub spectator mode.
-- [x] All 3 mission templates (`RestorePower`, `RecoverCargo`, `RepairSignal`) fully functional.
-- [x] The Hollow navigates hand-authored geometry, reacts to footsteps, and respects line-of-sight.
-- [x] Player data (Scrap, Upgrades, Artifacts) persists safely with schema versioning.
-- [x] Remote events are rate-limited and server-validated against exploits.
-- [x] Mobile touch controls and responsive UI verified on small screens.
-- [x] Soundscape and dynamic lighting enhance survival tension without performance hit.
+### 3.1 Automated CI Verification (Reproducible in CI via `.github/workflows/ci.yml`)
+The following checks are strictly automated, deterministic, and required to pass before any PR or commit merges:
+- [x] **Project Build Compilation:** `rojo build default.project.json --output Nightline.rbxlx` succeeds without missing dependencies.
+- [x] **Luau Static Analysis:** `selene src/` passes with 0 errors and 0 warnings against the standard library.
+- [x] **Boundary & Logic Unit Tests (`python tests/run_tests.py`):**
+  - Integer equipment slot validation (`FIX-T13`).
+  - Flashlight/flare rate-limiting and phase-gating (`FIX-T14`).
+  - Read-only profile protection and cosmetic reconciliation (`FIX-T15`).
+  - State generation cancellation on phase waits (`FIX-T16`).
+  - Server-authoritative sprint and displacement anti-cheat (`FIX-T17`).
+  - Hub upgrade terminal proximity validation (`FIX-T18`).
+  - Destination voting single-vote tracking and tie-breaking (`FIX-T19`).
+  - CameraController travel/return transitions and restoration (`FIX-T20`).
+  - Contextual ProximityPrompt presentation across input modes (`FIX-T21`).
+  - Authoritative analytics telemetry hooks (`FIX-T22`).
+  - Developer Product receipt idempotency and game pass catalog (`FIX-T23`).
+
+### 3.2 Manual Studio Staging Checklist (Execute in Roblox Studio Before Public Toggle)
+Before flipping experience privacy from *Private* to *Public* on the Creator Dashboard, the release coordinator must execute this manual session in Roblox Studio (Test > Local Server):
+
+- [ ] **Solo Playthrough:**
+  - Launch Local Server (1 Player).
+  - Walk to the Upgrade Terminal in the Hub carriage, trigger prompt, and verify shop HUD opens.
+  - Wait for round departure; verify CameraController cinematic travel sweep plays and restores camera upon arrival at the station.
+  - Complete primary mission (collect fuses / deliver cargo / reboot relay).
+  - Return to extraction platform before countdown expires; verify return transition and expedition rewards in results screen.
+- [ ] **Multi-Player Stress Test (2–6 Players):**
+  - Launch Local Server (3 Players).
+  - Test simultaneous carriage navigation without clipping or physics desync.
+  - Test destination voting: vote for Station 001 and Station 002 from different clients; confirm tally updates on clients and winning destination loads.
+  - Have one player sprint near The Hollow; verify creature enters INVESTIGATE / CHASE. Have player break line-of-sight behind cover; verify creature loses target.
+  - Disconnect one player mid-exploration; verify active roster updates without halting the round loop.
+- [ ] **Mobile & Gamepad Emulation:**
+  - In Roblox Studio Device Emulator, select iPhone 14 and verify Sprint button and equipment buttons are accessible.
+  - Connect a gamepad; verify ProximityPrompts display gamepad button prompts (`[X]`/`[A]`).
