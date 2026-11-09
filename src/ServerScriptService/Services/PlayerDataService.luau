@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 local GameTypes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"):WaitForChild("GameTypes"))
 local RewardConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("RewardConfig"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
+local AnalyticsService = require(script.Parent:WaitForChild("AnalyticsService"))
 local log = Logger.new("PlayerDataService")
 
 local DATASTORE_NAME = "Nightline_PlayerData_v1"
@@ -152,6 +153,7 @@ function PlayerDataService.Init()
 	Players.PlayerAdded:Connect(function(player)
 		local profile = PlayerDataService.LoadProfile(player)
 		PlayerDataService.Sync(player, profile)
+		AnalyticsService.TrackSessionStart(player, profile.Statistics and profile.Statistics.Runs or 0, profile.Scrap)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
@@ -365,6 +367,7 @@ function PlayerDataService.PurchaseUpgrade(player: Player, upgradeId: string): (
 	})
 
 	PlayerDataService.Sync(player, profile)
+	AnalyticsService.TrackUpgradePurchased(player, upgradeId, upgradeDef.CostScrap, profile.Scrap)
 	return true, "Upgrade successfully purchased!"
 end
 

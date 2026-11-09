@@ -10,6 +10,7 @@ local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild
 local MonsterConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MonsterConfig"))
 local HollowAI = require(script.Parent.Parent:WaitForChild("AI"):WaitForChild("HollowAI"))
 local MovementService = require(script.Parent:WaitForChild("MovementService"))
+local AnalyticsService = require(script.Parent:WaitForChild("AnalyticsService"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
 local log = Logger.new("MonsterService")
 
@@ -46,6 +47,12 @@ function MonsterService.Init()
 
 	HollowAI.OnPlayerAttacked:Connect(function(player: Player)
 		log:Info("Handling player elimination by The Hollow", { Player = player.Name })
+
+		pcall(function()
+			local RoundService = require(script.Parent:WaitForChild("RoundService"))
+			local roundId = RoundService.GetCurrentRoundId()
+			AnalyticsService.TrackPlayerElimination(player, roundId, "TheHollow")
+		end)
 
 		-- Inform all clients
 		if notificationRemote then

@@ -15,6 +15,7 @@ local log = Logger.new("ObjectiveService")
 
 local InventoryService = require(script.Parent:WaitForChild("InventoryService"))
 local InteractionService = require(script.Parent:WaitForChild("InteractionService"))
+local AnalyticsService = require(script.Parent:WaitForChild("AnalyticsService"))
 
 local activeMission: GameTypes.MissionState? = nil
 local objectiveUpdatedRemote: RemoteEvent? = nil
@@ -163,7 +164,7 @@ function ObjectiveService.BindInteractions()
 				indicator.Color = Color3.fromRGB(50, 240, 80)
 			end
 
-			ObjectiveService.AddProgress(1)
+			ObjectiveService.AddProgress(1, player)
 
 		-- 3. CARGO CRATE PICKUP
 		elseif promptName == "PickUpCargoPrompt" then
@@ -245,7 +246,7 @@ function ObjectiveService.BindInteractions()
 			)
 			table.insert(spawnedEntities, deliveredCrate)
 
-			ObjectiveService.AddProgress(1)
+			ObjectiveService.AddProgress(1, player)
 
 		-- 5. SIGNAL RELAY TERMINAL REBOOT
 		elseif promptName == "RebootSignalPrompt" then
@@ -269,7 +270,7 @@ function ObjectiveService.BindInteractions()
 				end
 			end
 
-			ObjectiveService.AddProgress(1)
+			ObjectiveService.AddProgress(1, player)
 
 		-- 6. OPTIONAL SCRAP CACHE (Transient Unbanked Scrap)
 		elseif promptName == "ScrapCachePrompt" then
@@ -494,7 +495,7 @@ function ObjectiveService.GetActiveMission(): GameTypes.MissionState?
 	return activeMission
 end
 
-function ObjectiveService.AddProgress(amount: number): boolean
+function ObjectiveService.AddProgress(amount: number, player: Player?): boolean
 	if not activeMission or activeMission.IsComplete then
 		return false
 	end
@@ -504,6 +505,8 @@ function ObjectiveService.AddProgress(amount: number): boolean
 		Progress = activeMission.Progress,
 		Target = activeMission.TargetProgress,
 	})
+
+	AnalyticsService.TrackObjectiveCompleted(player, activeMission.Type, activeMission.Progress, activeMission.TargetProgress)
 
 	if activeMission.Progress >= activeMission.TargetProgress then
 		activeMission.IsComplete = true
