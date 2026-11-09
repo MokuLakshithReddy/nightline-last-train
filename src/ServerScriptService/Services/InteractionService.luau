@@ -3,6 +3,7 @@
 -- Authoritative router for contextual ProximityPrompt interactions
 
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local SecurityService = require(script.Parent:WaitForChild("SecurityService"))
@@ -10,7 +11,8 @@ local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Ut
 local Signal = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Signal"))
 local log = Logger.new("InteractionService")
 
-local interactionCooldowns: { [string]: number } = {}
+-- Prompt-indexed cooldown table with weak keys to prevent memory leaks when prompts are destroyed
+local promptCooldowns: { [ProximityPrompt]: { [number]: number } } = setmetatable({}, { __mode = "k" }) :: any
 
 local InteractionService = {
 	OnPromptTriggered = Signal.new(),
@@ -18,6 +20,12 @@ local InteractionService = {
 
 function InteractionService.Init()
 	log:Info("Initializing InteractionService...")
+
+	Players.PlayerRemoving:Connect(function(player: Player)
+		for _, playerRecord in pairs(promptCooldowns) do
+			playerRecord[player.UserId] = nil
+		end
+	end)
 
 	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, player: Player)
 		local promptParent = prompt.Parent
@@ -33,13 +41,19 @@ function InteractionService.Init()
 			return
 		end
 
-		-- 3. Cooldown check per prompt
-		local cooldownKey = tostring(prompt:GetDebugId(1)) .. "_" .. tostring(player.UserId)
+		-- 3. Cooldown check per prompt using Instance key (no GetDebugId)
+		local playerRecord = promptCooldowns[prompt]
+		if not playerRecord then
+			playerRecord = {}
+			promptCooldowns[prompt] = playerRecord
+		end
+
 		local now = os.clock()
-		if interactionCooldowns[cooldownKey] and (now - interactionCooldowns[cooldownKey]) < 0.5 then
+		local lastInteraction = playerRecord[player.UserId]
+		if lastInteraction and (now - lastInteraction) < 0.5 then
 			return
 		end
-		interactionCooldowns[cooldownKey] = now
+		playerRecord[player.UserId] = now
 
 		log:Debug("Validated prompt interaction", {
 			Player = player.Name,

@@ -146,108 +146,145 @@ function RoundService.StartGameLoop()
 
 	task.spawn(function()
 		while true do
-			local playerCount = #Players:GetPlayers()
+			local success, loopErr = pcall(function()
+				local playerCount = #Players:GetPlayers()
 
-			if currentState == "WAITING" then
-				if playerCount >= GameConfig.Server.MinPlayersToStart then
-					RoundService.TransitionTo("INTERMISSION")
-				else
-					task.wait(2)
-				end
-
-			elseif currentState == "INTERMISSION" then
-				RoundService.WaitForPhase()
-				if #Players:GetPlayers() >= GameConfig.Server.MinPlayersToStart then
-					RoundService.TransitionTo("BOARDING")
-				else
-					RoundService.TransitionTo("WAITING")
-				end
-
-			elseif currentState == "BOARDING" then
-				RoundService.WaitForPhase()
-				table.clear(activeRoster)
-				table.clear(extractedPlayers)
-				table.clear(eliminatedPlayers)
-				for _, p in ipairs(Players:GetPlayers()) do
-					activeRoster[p.UserId] = p
-				end
-
-				if next(activeRoster) ~= nil then
-					RoundService.TransitionTo("TRAVEL")
-				else
-					RoundService.TransitionTo("WAITING")
-				end
-
-			elseif currentState == "TRAVEL" then
-				RoundService.WaitForPhase()
-				RoundService.TransitionTo("EXPLORATION")
-
-			elseif currentState == "EXPLORATION" then
-				StationService.LoadStation(currentStationId)
-
-				local missions: { GameTypes.MissionType } = { "RestorePower", "RecoverCargo", "RepairSignal" }
-				local missionIndex = ((roundCounter - 1) % #missions) + 1
-				local selectedMission = missions[missionIndex]
-				local activeMission = ObjectiveService.StartMission(selectedMission)
-
-				MonsterService.SpawnMonster()
-
-				local spawnPos = StationService.GetSpawnPosition()
-				for _, player in pairs(activeRoster) do
-					teleportPlayer(player, spawnPos)
-				end
-
-				broadcastNotification(string.format("Arrived at The Forgotten Terminal! Objective: %s", activeMission.Title), "Warning")
-				RoundService.WaitForPhase()
-				RoundService.TransitionTo("EXTRACTION")
-
-			elseif currentState == "EXTRACTION" then
-				RoundService.WaitForPhase()
-				RoundService.TransitionTo("RETURN")
-
-			elseif currentState == "RETURN" then
-				MonsterService.DespawnMonster()
-				for userId, player in pairs(activeRoster) do
-					if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-						local pos = (player.Character.HumanoidRootPart :: BasePart).Position
-						if StationService.IsInsideExtractionZone(pos) then
-							extractedPlayers[userId] = true
-						end
+				if currentState == "WAITING" then
+					if playerCount >= GameConfig.Server.MinPlayersToStart then
+						RoundService.TransitionTo("INTERMISSION")
+					else
+						task.wait(2)
 					end
-					teleportToHub(player)
+
+				elseif currentState == "INTERMISSION" then
+					RoundService.WaitForPhase()
+					if #Players:GetPlayers() >= GameConfig.Server.MinPlayersToStart then
+						RoundService.TransitionTo("BOARDING")
+					else
+						RoundService.TransitionTo("WAITING")
+					end
+
+				elseif currentState == "BOARDING" then
+					RoundService.WaitForPhase()
+					table.clear(activeRoster)
+					table.clear(extractedPlayers)
+					table.clear(eliminatedPlayers)
+					for _, p in ipairs(Players:GetPlayers()) do
+						activeRoster[p.UserId] = p
+					end
+
+					if next(activeRoster) ~= nil then
+						RoundService.TransitionTo("TRAVEL")
+					else
+						RoundService.TransitionTo("WAITING")
+					end
+
+				elseif currentState == "TRAVEL" then
+					RoundService.WaitForPhase()
+					RoundService.TransitionTo("EXPLORATION")
+
+				elseif currentState == "EXPLORATION" then
+					local stationOk, stationErr = pcall(function()
+						StationService.LoadStation(currentStationId)
+					end)
+					if not stationOk then
+						log:Error("Failed to load station in EXPLORATION: " .. tostring(stationErr))
+					end
+
+					local missions: { GameTypes.MissionType } = { "RestorePower", "RecoverCargo", "RepairSignal" }
+					local missionIndex = ((roundCounter - 1) % #missions) + 1
+					local selectedMission = missions[missionIndex]
+					local activeMission = nil
+					local missionOk, missionErr = pcall(function()
+						activeMission = ObjectiveService.StartMission(selectedMission)
+					end)
+					if not missionOk then
+						log:Error("Failed to start mission in EXPLORATION: " .. tostring(missionErr))
+					end
+
+					-- Protected monster spawn call to prevent NPC errors from breaking the round loop
+					local monsterOk, monsterErr = pcall(function()
+						MonsterService.SpawnMonster()
+					end)
+					if not monsterOk then
+						log:Error("Failed to spawn monster in EXPLORATION: " .. tostring(monsterErr))
+					end
+
+					local spawnPos = StationService.GetSpawnPosition()
+					for _, player in pairs(activeRoster) do
+						pcall(function()
+							teleportPlayer(player, spawnPos)
+						end)
+					end
+
+					local missionTitle = if activeMission and activeMission.Title then activeMission.Title else "Expedition Active"
+					broadcastNotification(string.format("Arrived at The Forgotten Terminal! Objective: %s", missionTitle), "Warning")
+					RoundService.WaitForPhase()
+					RoundService.TransitionTo("EXTRACTION")
+
+				elseif currentState == "EXTRACTION" then
+					RoundService.WaitForPhase()
+					RoundService.TransitionTo("RETURN")
+
+				elseif currentState == "RETURN" then
+					local despawnOk, despawnErr = pcall(function()
+						MonsterService.DespawnMonster()
+					end)
+					if not despawnOk then
+						log:Error("Failed to despawn monster in RETURN: " .. tostring(despawnErr))
+					end
+
+					for userId, player in pairs(activeRoster) do
+						pcall(function()
+							if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+								local pos = (player.Character.HumanoidRootPart :: BasePart).Position
+								if StationService.IsInsideExtractionZone(pos) then
+									extractedPlayers[userId] = true
+								end
+							end
+							teleportToHub(player)
+						end)
+					end
+					broadcastNotification("Train departing station! Returning to safe haven...", "Success")
+					RoundService.WaitForPhase()
+					RoundService.TransitionTo("RESULTS")
+
+				elseif currentState == "RESULTS" then
+					local mission = ObjectiveService.GetActiveMission()
+					local missionDone = mission ~= nil and mission.IsComplete
+
+					for userId, player in pairs(activeRoster) do
+						pcall(function()
+							local didExtract = extractedPlayers[userId] == true
+							local artifacts = ObjectiveService.GetCollectedArtifacts(player)
+							local unbanked = ObjectiveService.GetUnbankedScrap(player)
+
+							RewardService.AwardExpeditionRewards(
+								currentRoundId,
+								player,
+								missionDone,
+								didExtract,
+								unbanked,
+								artifacts
+							)
+						end)
+					end
+
+					if missionDone then
+						broadcastNotification("EXPEDITION COMPLETE: Mission targets secured!", "Success")
+					else
+						broadcastNotification("EXPEDITION OVER: Returning to Hub.", "Info")
+					end
+
+					RoundService.WaitForPhase()
+					RoundService.CleanupRound()
+					RoundService.TransitionTo("WAITING")
 				end
-				broadcastNotification("Train departing station! Returning to safe haven...", "Success")
-				RoundService.WaitForPhase()
-				RoundService.TransitionTo("RESULTS")
+			end)
 
-			elseif currentState == "RESULTS" then
-				local mission = ObjectiveService.GetActiveMission()
-				local missionDone = mission ~= nil and mission.IsComplete
-
-				for userId, player in pairs(activeRoster) do
-					local didExtract = extractedPlayers[userId] == true
-					local artifacts = ObjectiveService.GetCollectedArtifacts(player)
-					local unbanked = ObjectiveService.GetUnbankedScrap(player)
-
-					RewardService.AwardExpeditionRewards(
-						currentRoundId,
-						player,
-						missionDone,
-						didExtract,
-						unbanked,
-						artifacts
-					)
-				end
-
-				if missionDone then
-					broadcastNotification("EXPEDITION COMPLETE: Mission targets secured!", "Success")
-				else
-					broadcastNotification("EXPEDITION OVER: Returning to Hub.", "Info")
-				end
-
-				RoundService.WaitForPhase()
-				RoundService.CleanupRound()
-				RoundService.TransitionTo("WAITING")
+			if not success then
+				log:Error("Critical error caught in round-loop coroutine (" .. tostring(currentState) .. "): " .. tostring(loopErr))
+				task.wait(1)
 			end
 		end
 	end)

@@ -72,13 +72,14 @@ function HollowAI.EmitNoise(position: Vector3, radius: number, loudness: number,
 end
 
 -- Checks line of sight between monster eyes and target character
-local function hasLineOfSight(eyePos: Vector3, targetCharacter: Model): boolean
+local function hasLineOfSight(eyePos: Vector3, targetCharacter: Model, monsterModel: Model?): boolean
 	local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not targetRoot then return false end
 
 	local rayParams = RaycastParams.new()
 	rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	rayParams.FilterDescendantsInstances = { targetCharacter.Parent or targetCharacter }
+	-- Exclude the monster model itself so the raycast can hit environment walls / cover
+	rayParams.FilterDescendantsInstances = if monsterModel then { monsterModel } else {}
 	rayParams.IgnoreWater = true
 
 	local direction = (targetRoot.Position - eyePos)
@@ -133,7 +134,7 @@ local function scanForTargets(context: HollowContext): Player?
 					local fovThreshold = math.cos(math.rad(MonsterConfig.Perception.Vision.FieldOfViewDegrees / 2))
 
 					if dot >= fovThreshold or dist <= 12 or hasFlashlight then
-						if hasLineOfSight(eyePos, character) then
+						if hasLineOfSight(eyePos, character, context.Model) then
 							if dist < closestDist then
 								closestDist = dist
 								closestTarget = player
@@ -214,7 +215,7 @@ local function attemptAttack(context: HollowContext, player: Player)
 		return
 	end
 
-	if not hasLineOfSight(context.EyePart.Position, character) then
+	if not hasLineOfSight(context.EyePart.Position, character, context.Model) then
 		return
 	end
 
@@ -234,8 +235,13 @@ local function attemptAttack(context: HollowContext, player: Player)
 		local finalChar = player.Character
 		local finalRoot = finalChar:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if finalRoot and (finalRoot.Position - context.RootPart.Position).Magnitude <= (MonsterConfig.Combat.AttackRange + 1.5) then
-			log:Info("The Hollow eliminated player", { Player = player.Name })
-			HollowAI.OnPlayerAttacked:Fire(player)
+			-- Recheck line of sight after wind-up period to confirm player hasn't moved behind cover/walls
+			if hasLineOfSight(context.EyePart.Position, finalChar, context.Model) then
+				log:Info("The Hollow eliminated player", { Player = player.Name })
+				HollowAI.OnPlayerAttacked:Fire(player)
+			else
+				log:Debug("Attack evaded: player broke line of sight behind cover during windup", { Player = player.Name })
+			end
 		end
 	end)
 end

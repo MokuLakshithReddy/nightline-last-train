@@ -141,61 +141,91 @@ function MonsterService.BuildMonsterModel(): Model
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	humanoid.Parent = model
 
-	-- Server network ownership for physical simulation integrity
-	root:SetNetworkOwner(nil)
+	-- Note: Network ownership cannot be assigned while model is unparented;
+	-- it is assigned in SpawnMonster after model is parented to Workspace.Runtime.
 
 	return model
 end
 
 function MonsterService.SpawnMonster()
-	MonsterService.DespawnMonster()
+	local success, err = pcall(function()
+		MonsterService.DespawnMonster()
 
-	local runtime = Workspace:FindFirstChild("World") and Workspace.World:FindFirstChild("Runtime")
-	if not runtime then return end
-
-	log:Info("Spawning The Hollow into Station 001...")
-
-	local model = MonsterService.BuildMonsterModel()
-	model.Parent = runtime
-	currentMonsterModel = model
-
-	local offset = GameConfig.World.ActiveStationOffset
-	local waypoints = {
-		offset + Vector3.new(42, 2, 0),    -- Concourse Center
-		offset + Vector3.new(88, 2, 18),   -- Maintenance Room
-		offset + Vector3.new(42, 2, 55),   -- Cargo Storage
-		offset + Vector3.new(88, 2, -18),  -- Control Room
-		offset + Vector3.new(42, -2, -65), -- Underground Tunnel
-	}
-
-	local context = HollowAI.Create(model, waypoints)
-	currentAIContext = context
-
-	-- Start AI tick loop (10 Hz)
-	aiLoopThread = task.spawn(function()
-		while context.IsActive do
-			context.StateMachine:Update(context, 0.1)
-			task.wait(0.1)
+		local world = Workspace:FindFirstChild("World")
+		if not world then
+			world = Instance.new("Folder")
+			world.Name = "World"
+			world.Parent = Workspace
 		end
-	end)
+		local runtime = world:FindFirstChild("Runtime")
+		if not runtime then
+			runtime = Instance.new("Folder")
+			runtime.Name = "Runtime"
+			runtime.Parent = world
+		end
 
-	-- Listen for movement noise (walking vs sprinting)
-	noiseListeningConnection = game:GetService("RunService").Heartbeat:Connect(function()
-		for _, player in ipairs(Players:GetPlayers()) do
-			local char = player.Character
-			if char and char:FindFirstChild("HumanoidRootPart") then
-				local hum = char:FindFirstChildOfClass("Humanoid")
-				if hum and hum.MoveDirection.Magnitude > 0.1 then
-					local isSprinting = hum.WalkSpeed > (GameConfig.Player.WalkSpeed + 2)
-					local radius = isSprinting and MonsterConfig.Perception.Hearing.RunNoiseRadius or MonsterConfig.Perception.Hearing.WalkNoiseRadius
-					local loudness = isSprinting and 2.0 or 1.0
-					HollowAI.EmitNoise((char.HumanoidRootPart :: BasePart).Position, radius, loudness, player)
+		log:Info("Spawning The Hollow into Station 001...")
+
+		local model = MonsterService.BuildMonsterModel()
+		-- Parent to Workspace hierarchy FIRST before setting network ownership
+		model.Parent = runtime
+		currentMonsterModel = model
+
+		-- Server network ownership for physical simulation integrity (requires part in Workspace)
+		local root = model:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if root and root:IsDescendantOf(Workspace) then
+			pcall(function()
+				root:SetNetworkOwner(nil)
+			end)
+		end
+
+		local offset = GameConfig.World.ActiveStationOffset
+		local waypoints = {
+			offset + Vector3.new(42, 2, 0),    -- Concourse Center
+			offset + Vector3.new(88, 2, 18),   -- Maintenance Room
+			offset + Vector3.new(42, 2, 55),   -- Cargo Storage
+			offset + Vector3.new(88, 2, -18),  -- Control Room
+			offset + Vector3.new(42, -2, -65), -- Underground Tunnel
+		}
+
+		local context = HollowAI.Create(model, waypoints)
+		currentAIContext = context
+
+		-- Start AI tick loop (10 Hz)
+		aiLoopThread = task.spawn(function()
+			while context.IsActive do
+				local tickOk, tickErr = pcall(function()
+					context.StateMachine:Update(context, 0.1)
+				end)
+				if not tickOk then
+					log:Error("Error in Hollow AI tick loop: " .. tostring(tickErr))
+				end
+				task.wait(0.1)
+			end
+		end)
+
+		-- Listen for movement noise (walking vs sprinting)
+		noiseListeningConnection = game:GetService("RunService").Heartbeat:Connect(function()
+			for _, player in ipairs(Players:GetPlayers()) do
+				local char = player.Character
+				if char and char:FindFirstChild("HumanoidRootPart") then
+					local hum = char:FindFirstChildOfClass("Humanoid")
+					if hum and hum.MoveDirection.Magnitude > 0.1 then
+						local isSprinting = hum.WalkSpeed > (GameConfig.Player.WalkSpeed + 2)
+						local radius = isSprinting and MonsterConfig.Perception.Hearing.RunNoiseRadius or MonsterConfig.Perception.Hearing.WalkNoiseRadius
+						local loudness = isSprinting and 2.0 or 1.0
+						HollowAI.EmitNoise((char.HumanoidRootPart :: BasePart).Position, radius, loudness, player)
+					end
 				end
 			end
-		end
+		end)
+
+		log:Info("The Hollow is actively patrolling Station 001.")
 	end)
 
-	log:Info("The Hollow is actively patrolling Station 001.")
+	if not success then
+		log:Error("Failed to spawn monster: " .. tostring(err))
+	end
 end
 
 function MonsterService.DespawnMonster()
