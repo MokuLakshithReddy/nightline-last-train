@@ -16,6 +16,7 @@ local StationService = require(script.Parent:WaitForChild("StationService"))
 local ObjectiveService = require(script.Parent:WaitForChild("ObjectiveService"))
 local RewardService = require(script.Parent:WaitForChild("RewardService"))
 local MonsterService = require(script.Parent:WaitForChild("MonsterService"))
+local MovementService = require(script.Parent:WaitForChild("MovementService"))
 
 -- Remotes
 local roundStateRemote: RemoteEvent? = nil
@@ -76,7 +77,9 @@ local function teleportPlayer(player: Player, destination: Vector3)
 	if character then
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
+			MovementService.RegisterTeleport(player, 2.5)
 			root.CFrame = CFrame.new(destination)
+			root.AssemblyLinearVelocity = Vector3.zero
 		end
 	end
 end
