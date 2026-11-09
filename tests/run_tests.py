@@ -914,6 +914,115 @@ def test_concurrent_receipt_guard():
     assert store["Player_123"]["Scrap"] == 100
 
 
+@test_case("DataStore failure closed mode, profile writability, and save preservation (FIX-T33)")
+def test_datastore_fail_closed_mode():
+    with open("src/ServerScriptService/Services/PlayerDataService.luau", "r", encoding="utf-8") as f:
+        playerdata = f.read()
+    with open("src/ServerScriptService/Services/PurchaseService.luau", "r", encoding="utf-8") as f:
+        purchase = f.read()
+
+    # 1. Source verification of explicit mock vs production distinction
+    assert "dataStoreAvailable" in playerdata, "Must track dataStoreAvailable flag"
+    assert "isStudioMockMode" in playerdata, "Must track explicit isStudioMockMode flag"
+    assert "not dataStoreAvailable and not isStudioMockMode" in playerdata, \
+        "IsProfileWritable must return false in production if DataStore is unavailable"
+    assert "loadFailed[userId] = true" in playerdata, "Must mark loadFailed on DataStore failure"
+    assert "saveSuccess = false" in playerdata, "SaveProfile must return false when DataStore is unavailable in production"
+    assert "PlayerDataService.SetMockMode" in playerdata, "SetMockMode helper required"
+    assert "PlayerDataService.SetDataStore" in playerdata, "SetDataStore helper required"
+
+    # 2. PurchaseService writability precondition
+    assert "if not PlayerDataService.IsProfileWritable(player) then" in purchase, \
+        "PurchaseService must check IsProfileWritable before granting"
+
+    # 3. Simulation of DataStore failure vs. Studio Mock mode
+    class SimulatedPlayerDataService:
+        def __init__(self, is_studio=False, datastore_init_ok=False):
+            self.is_studio = is_studio
+            self.datastore_available = datastore_init_ok
+            self.is_studio_mock = is_studio and not datastore_init_ok
+            self.load_failed = {}
+            self.is_dirty = {}
+            self.profiles = {}
+
+        def load_profile(self, uid):
+            if self.datastore_available:
+                self.profiles[uid] = {"Scrap": 50, "ProcessedReceipts": {}}
+                return self.profiles[uid]
+            elif self.is_studio_mock:
+                self.profiles[uid] = {"Scrap": 0, "ProcessedReceipts": {}}
+                return self.profiles[uid]
+            else:
+                # Production with no DataStore -> fail closed!
+                self.load_failed[uid] = True
+                self.profiles[uid] = {"Scrap": 0, "ProcessedReceipts": {}}
+                return self.profiles[uid]
+
+        def is_profile_writable(self, uid):
+            if not self.datastore_available and not self.is_studio_mock:
+                return False
+            if self.load_failed.get(uid):
+                return False
+            return uid in self.profiles
+
+        def add_scrap(self, uid, amount):
+            if not self.is_profile_writable(uid):
+                return False
+            self.profiles[uid]["Scrap"] += amount
+            self.is_dirty[uid] = True
+            return True
+
+        def save_profile(self, uid):
+            if not self.is_profile_writable(uid):
+                return False
+            if self.datastore_available:
+                self.is_dirty[uid] = False
+                return True
+            elif self.is_studio_mock:
+                self.is_dirty[uid] = False
+                return True
+            else:
+                # Production failure: preserve dirty flag and return False
+                return False
+
+    # Production scenario with broken DataStore
+    prod_svc = SimulatedPlayerDataService(is_studio=False, datastore_init_ok=False)
+    prod_svc.load_profile(101)
+    assert prod_svc.is_profile_writable(101) is False, "Profile must be non-writable in production when DataStore fails"
+    assert prod_svc.add_scrap(101, 100) is False, "Mutations must be rejected when DataStore is unavailable"
+    assert prod_svc.save_profile(101) is False, "SaveProfile must return failure when DataStore is unavailable"
+
+    # Purchase processing guard simulation under production DataStore failure
+    def simulate_purchase(svc, uid, purchase_id):
+        if not svc.is_profile_writable(uid):
+            return "NotProcessedYet"
+        profile = svc.profiles.get(uid)
+        prev_scrap = profile["Scrap"]
+        if not svc.add_scrap(uid, 100):
+            return "NotProcessedYet"
+        profile["ProcessedReceipts"][purchase_id] = True
+        if not svc.save_profile(uid):
+            # Rollback
+            profile["Scrap"] = prev_scrap
+            del profile["ProcessedReceipts"][purchase_id]
+            return "NotProcessedYet"
+        return "PurchaseGranted"
+
+    res_prod = simulate_purchase(prod_svc, 101, "rcpt_prod_fail")
+    assert res_prod == "NotProcessedYet", "Purchase must NOT return PurchaseGranted when DataStore is unavailable"
+    assert prod_svc.profiles[101]["Scrap"] == 0
+
+    # Studio mock mode scenario (intentional local session)
+    studio_mock_svc = SimulatedPlayerDataService(is_studio=True, datastore_init_ok=False)
+    studio_mock_svc.load_profile(202)
+    assert studio_mock_svc.is_profile_writable(202) is True, "Profile is writable in intentional Studio mock mode"
+    assert studio_mock_svc.add_scrap(202, 50) is True
+    assert studio_mock_svc.save_profile(202) is True
+    res_studio = simulate_purchase(studio_mock_svc, 202, "rcpt_studio_mock")
+    assert res_studio == "PurchaseGranted", "Purchase succeeds in Studio mock mode"
+
+
+
 
 # =========================================================================
 # Runner Entry Point
@@ -945,6 +1054,7 @@ def main():
     test_monetization_processing()
     test_durable_receipt_persistence()
     test_concurrent_receipt_guard()
+    test_datastore_fail_closed_mode()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

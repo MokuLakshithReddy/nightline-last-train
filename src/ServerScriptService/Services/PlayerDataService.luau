@@ -37,6 +37,8 @@ local DefaultData: GameTypes.PlayerProfile = {
 }
 
 local dataStore: DataStore? = nil
+local dataStoreAvailable: boolean = false
+local isStudioMockMode: boolean = false
 local profilesCache: { [number]: GameTypes.PlayerProfile } = {}
 local isDirty: { [number]: boolean } = {}
 local loadFailed: { [number]: boolean } = {}
@@ -147,18 +149,39 @@ function PlayerDataService.Init()
 	end
 	profileUpdatedRemote = existing
 
-	if not RunService:IsStudio() or pcall(function() return DataStoreService:GetDataStore("TestAccess") end) then
+	local isStudio = RunService:IsStudio()
+	if isStudio then
+		-- In Studio, check if API access to DataStores is enabled
+		local testOk, ds = pcall(function()
+			return DataStoreService:GetDataStore(DATASTORE_NAME)
+		end)
+		if testOk and ds then
+			dataStore = ds
+			dataStoreAvailable = true
+			isStudioMockMode = false
+			log:Info("Connected to live DataStoreService in Studio.")
+		else
+			dataStore = nil
+			dataStoreAvailable = false
+			isStudioMockMode = true
+			log:Info("Running in Studio with intentional mock persistence mode.")
+		end
+	else
+		-- Production environment: MUST connect to live DataStore
 		local success, ds = pcall(function()
 			return DataStoreService:GetDataStore(DATASTORE_NAME)
 		end)
 		if success and ds then
 			dataStore = ds
-			log:Info("Connected to DataStoreService with session lock authority.")
+			dataStoreAvailable = true
+			isStudioMockMode = false
+			log:Info("Connected to production DataStoreService with session lock authority.")
 		else
-			log:Warn("DataStore access unavailable; utilizing local session cache.")
+			dataStore = nil
+			dataStoreAvailable = false
+			isStudioMockMode = false
+			log:Error("CRITICAL: Production DataStoreService access unavailable; failing closed into read-only mode to prevent data corruption!")
 		end
-	else
-		log:Info("Running in Studio with mock session persistence.")
 	end
 
 	Players.PlayerAdded:Connect(function(player)
@@ -266,7 +289,14 @@ function PlayerDataService.LoadProfile(player: Player): GameTypes.PlayerProfile
 			loadFailed[userId] = true
 			profile = deepCopy(DefaultData)
 		end
+	elseif isStudioMockMode then
+		profile = deepCopy(DefaultData)
 	else
+		-- Production environment without DataStore access: Fail closed!
+		log:Error("Production DataStore access unavailable; failing closed with read-only profile", {
+			UserId = userId,
+		})
+		loadFailed[userId] = true
 		profile = deepCopy(DefaultData)
 	end
 
@@ -281,6 +311,10 @@ end
 -- Centralized check verifying the profile is active and writable (not marked read-only due to lock failure)
 function PlayerDataService.IsProfileWritable(player: Player): boolean
 	local userId = player.UserId
+	if not dataStoreAvailable and not isStudioMockMode then
+		-- Fail closed in production when DataStore is unavailable
+		return false
+	end
 	if loadFailed[userId] == true then
 		return false
 	end
@@ -538,14 +572,38 @@ function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?, is
 		if not saveSuccess then
 			log:Error("Exhausted retries while attempting to save profile", { UserId = userId })
 		end
-	else
-		-- Running without live DataStore (Studio / Mock mode)
+	elseif isStudioMockMode then
+		-- Explicit Studio mock mode: local in-memory session only
 		isDirty[userId] = false
 		saveSuccess = true
+	else
+		-- Production environment without DataStore: Fail closed!
+		log:Error("Attempted SaveProfile in production with no active DataStore; write failed", {
+			UserId = userId,
+		})
+		-- Preserve dirty state (do not clear isDirty[userId])
+		saveSuccess = false
 	end
 
 	isSaving[userId] = false
 	return saveSuccess
+end
+
+function PlayerDataService.SetMockMode(isMock: boolean)
+	isStudioMockMode = isMock
+end
+
+function PlayerDataService.SetDataStore(ds: any)
+	dataStore = ds
+	dataStoreAvailable = (ds ~= nil)
+end
+
+function PlayerDataService.IsDataStoreAvailable(): boolean
+	return dataStoreAvailable
+end
+
+function PlayerDataService.IsMockMode(): boolean
+	return isStudioMockMode
 end
 
 return PlayerDataService
