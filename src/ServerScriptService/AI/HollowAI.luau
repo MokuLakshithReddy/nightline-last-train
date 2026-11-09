@@ -1,6 +1,6 @@
 --!strict
 -- HollowAI.luau
--- Authoritative AI state machine and sensory perception for The Hollow creature
+-- Authoritative AI state machine, sensory perception, and dynamic noise response
 
 local PathfindingService = game:GetService("PathfindingService")
 local Players = game:GetService("Players")
@@ -88,7 +88,6 @@ local function hasLineOfSight(eyePos: Vector3, targetCharacter: Model): boolean
 		return true
 	end
 
-	-- If it hit the target character or its children
 	if result.Instance:IsDescendantOf(targetCharacter) then
 		return true
 	end
@@ -120,13 +119,20 @@ local function scanForTargets(context: HollowContext): Player?
 				local diff = targetPos - monsterPos
 				local dist = diff.Magnitude
 
+				-- Check if player has active flashlight
+				local hasFlashlight = character:FindFirstChild("PlayerFlashlight") ~= nil
+				local maxVisionDist = MonsterConfig.Perception.Vision.MaxDistance
+				if hasFlashlight then
+					maxVisionDist *= MonsterConfig.Perception.Vision.FlashlightDetectionMultiplier
+				end
+
 				-- 1. Sight detection check
-				if dist <= MonsterConfig.Perception.Vision.MaxDistance then
+				if dist <= maxVisionDist then
 					local dirToTarget = diff.Unit
 					local dot = monsterForward:Dot(dirToTarget)
 					local fovThreshold = math.cos(math.rad(MonsterConfig.Perception.Vision.FieldOfViewDegrees / 2))
 
-					if dot >= fovThreshold or dist <= 12 then -- Peripheral/close hearing
+					if dot >= fovThreshold or dist <= 12 or hasFlashlight then
 						if hasLineOfSight(eyePos, character) then
 							if dist < closestDist then
 								closestDist = dist
@@ -157,7 +163,6 @@ local function scanForTargets(context: HollowContext): Player?
 	return closestTarget
 end
 
--- Helper to move monster along PathfindingService path
 local function moveToPosition(context: HollowContext, targetPos: Vector3, speed: number)
 	context.Humanoid.WalkSpeed = speed
 
@@ -187,12 +192,10 @@ local function moveToPosition(context: HollowContext, targetPos: Vector3, speed:
 			context.Humanoid:MoveTo(targetPos)
 		end
 	else
-		-- Fallback direct move
 		context.Humanoid:MoveTo(targetPos)
 	end
 end
 
--- Attacks player with windup and line-of-sight validation
 local function attemptAttack(context: HollowContext, player: Player)
 	local now = os.clock()
 	if now - context.LastAttackTime < MonsterConfig.Combat.AttackCooldown then
@@ -227,7 +230,6 @@ local function attemptAttack(context: HollowContext, player: Player)
 		context.EyePart.Color = Color3.fromRGB(255, 60, 60)
 		context.IsWindingUpAttack = false
 
-		-- Final hit verification
 		if not context.IsActive or not player.Character then return end
 		local finalChar = player.Character
 		local finalRoot = finalChar:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -343,7 +345,6 @@ function HollowAI.Create(model: Model, waypoints: { Vector3 }): HollowContext
 			local root = target.Character.HumanoidRootPart :: BasePart
 			local dist = (root.Position - ctx.RootPart.Position).Magnitude
 
-			-- Attack check
 			if dist <= MonsterConfig.Combat.AttackRange then
 				attemptAttack(ctx, target)
 			else
@@ -352,7 +353,6 @@ function HollowAI.Create(model: Model, waypoints: { Vector3 }): HollowContext
 
 			ctx.LastKnownTargetPosition = root.Position
 
-			-- Check if target escaped line of sight and range
 			if dist > MonsterConfig.Perception.Vision.MaxDistance + 15 then
 				ctx.StateMachine:TransitionTo("SEARCH", ctx)
 			end

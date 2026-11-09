@@ -1,6 +1,6 @@
 --!strict
 -- ObjectiveService.luau
--- Authoritative objective mechanics, physical entity spawning, artifact drops, and interaction routing
+-- Authoritative objective mechanics, physical entity spawning, artifact drops, unbanked scrap tracking, and strict state validation
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,6 +24,7 @@ local notificationRemote: RemoteEvent? = nil
 local spawnedEntities: { Instance } = {}
 local carryingCargo: { [number]: Instance } = {}
 local collectedArtifacts: { [number]: { string } } = {}
+local unbankedScrap: { [number]: number } = {}
 
 local ObjectiveService = {
 	OnMissionCompleted = Signal.new(),
@@ -45,7 +46,7 @@ local function createPart(parent: Instance, name: string, size: Vector3, cframe:
 end
 
 function ObjectiveService.Init()
-	log:Info("Initializing ObjectiveService...")
+	log:Info("Initializing ObjectiveService with strict state validation...")
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	objectiveUpdatedRemote = remotes:WaitForChild("ObjectiveUpdated") :: RemoteEvent
 	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
@@ -57,17 +58,59 @@ function ObjectiveService.GetCollectedArtifacts(player: Player): { string }
 	return collectedArtifacts[player.UserId] or {}
 end
 
+function ObjectiveService.GetUnbankedScrap(player: Player): number
+	return unbankedScrap[player.UserId] or 0
+end
+
+function ObjectiveService.ClearUnbankedScrap(player: Player)
+	unbankedScrap[player.UserId] = nil
+end
+
 function ObjectiveService.BindInteractions()
 	InteractionService.OnPromptTriggered:Connect(function(prompt: ProximityPrompt, player: Player)
 		local promptName = prompt.Name
 		local targetPart = prompt.Parent :: BasePart?
 		if not targetPart then return end
 
-		-- 1. FUSE PICKUP INTERACTION
+		-- Centralized Preconditions Check (Problem 4)
+		local character = player.Character
+		if not character then return end
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if not humanoid or humanoid.Health <= 0 then return end
+
+		local RoundService = require(script.Parent:WaitForChild("RoundService"))
+		local currentPhase = RoundService.GetCurrentState()
+		local isStationPhase = (currentPhase == "EXPLORATION" or currentPhase == "EXTRACTION")
+
+		-- Hub Prompts bypass station phase restrictions
+		if promptName == "LockerPrompt" or promptName == "OpenUpgradeTerminalPrompt" then
+			return
+		end
+
+		-- All station objective interactions require active expedition phase and roster membership
+		if not isStationPhase then
+			log:Warn("Rejected objective interaction outside exploration/extraction phase", { Player = player.Name, Phase = currentPhase })
+			return
+		end
+
+		if not RoundService.IsPlayerInRoster(player) then
+			log:Warn("Rejected objective interaction from non-rostered player", { Player = player.Name })
+			return
+		end
+
+		-- 1. FUSE PICKUP INTERACTION (Strict mission type check)
 		if promptName == "PickUpFusePrompt" then
-			InventoryService.AddMissionItem(player, "Fuse", 1)
+			if not activeMission or activeMission.Type ~= "RestorePower" or activeMission.IsComplete then
+				return
+			end
+
+			-- Atomic consumption on server
+			prompt.Enabled = false
 			targetPart:Destroy()
+
+			InventoryService.AddMissionItem(player, "Fuse", 1)
 			log:Info("Player collected fuse", { Player = player.Name })
+
 			if notificationRemote then
 				notificationRemote:FireClient(player, {
 					MessageKey = "FUSE_ACQUIRED",
@@ -79,12 +122,15 @@ function ObjectiveService.BindInteractions()
 
 		-- 2. FUSE SOCKET INSTALLATION
 		elseif promptName == "InstallFusePrompt" then
-			if not activeMission or activeMission.Type ~= "RestorePower" then return end
+			if not activeMission or activeMission.Type ~= "RestorePower" or activeMission.IsComplete then
+				return
+			end
+
 			if not InventoryService.HasMissionItem(player, "Fuse") then
 				if notificationRemote then
 					notificationRemote:FireClient(player, {
 						MessageKey = "NO_FUSE",
-						MessageText = "You need an Industrial Fuse to activate this breaker!",
+						MessageText = "You need an Industrial Fuse in your inventory to activate this breaker!",
 						Severity = "Warning",
 						Duration = 3,
 					})
@@ -92,8 +138,9 @@ function ObjectiveService.BindInteractions()
 				return
 			end
 
-			InventoryService.ConsumeMissionItem(player, "Fuse")
+			-- Atomic consumption on server
 			prompt.Enabled = false
+			InventoryService.ConsumeMissionItem(player, "Fuse")
 
 			local indicator = targetPart:FindFirstChild("IndicatorLight") :: BasePart?
 			if indicator then
@@ -104,8 +151,11 @@ function ObjectiveService.BindInteractions()
 
 		-- 3. CARGO CRATE PICKUP
 		elseif promptName == "PickUpCargoPrompt" then
-			if not activeMission or activeMission.Type ~= "RecoverCargo" then return end
-			if carryingCargo[player.UserId] then
+			if not activeMission or activeMission.Type ~= "RecoverCargo" or activeMission.IsComplete then
+				return
+			end
+
+			if carryingCargo[player.UserId] or InventoryService.HasMissionItem(player, "CargoContainer") then
 				if notificationRemote then
 					notificationRemote:FireClient(player, {
 						MessageKey = "ALREADY_CARRYING",
@@ -117,9 +167,12 @@ function ObjectiveService.BindInteractions()
 				return
 			end
 
-			local character = player.Character
-			if character and (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")) then
-				local torso = (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")) :: BasePart
+			-- Atomic consumption on server
+			prompt.Enabled = false
+			targetPart:Destroy()
+
+			local torso = (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or character:FindFirstChild("HumanoidRootPart")) :: BasePart?
+			if torso then
 				local carriedBox = createPart(character, "CarriedCargo", Vector3.new(2, 2, 2), torso.CFrame, Color3.fromRGB(220, 180, 50), Enum.Material.Wood)
 				carriedBox.CanCollide = false
 				carriedBox.Anchored = false
@@ -132,7 +185,6 @@ function ObjectiveService.BindInteractions()
 			end
 
 			InventoryService.AddMissionItem(player, "CargoContainer", 1)
-			targetPart:Destroy()
 
 			if notificationRemote then
 				notificationRemote:FireClient(player, {
@@ -145,7 +197,10 @@ function ObjectiveService.BindInteractions()
 
 		-- 4. CARGO DROP-OFF ON PLATFORM
 		elseif promptName == "DeliverCargoPrompt" then
-			if not activeMission or activeMission.Type ~= "RecoverCargo" then return end
+			if not activeMission or activeMission.Type ~= "RecoverCargo" or activeMission.IsComplete then
+				return
+			end
+
 			if not InventoryService.HasMissionItem(player, "CargoContainer") then
 				if notificationRemote then
 					notificationRemote:FireClient(player, {
@@ -178,7 +233,11 @@ function ObjectiveService.BindInteractions()
 
 		-- 5. SIGNAL RELAY TERMINAL REBOOT
 		elseif promptName == "RebootSignalPrompt" then
-			if not activeMission or activeMission.Type ~= "RepairSignal" then return end
+			if not activeMission or activeMission.Type ~= "RepairSignal" or activeMission.IsComplete then
+				return
+			end
+
+			-- Atomic consumption on server
 			prompt.Enabled = false
 
 			local monitor = targetPart:FindFirstChild("MonitorScreen") :: BasePart?
@@ -196,20 +255,26 @@ function ObjectiveService.BindInteractions()
 
 			ObjectiveService.AddProgress(1)
 
-		-- 6. OPTIONAL SCRAP CACHE
+		-- 6. OPTIONAL SCRAP CACHE (Fix for Problem 1: Unbanked Scrap)
 		elseif promptName == "ScrapCachePrompt" then
 			prompt.Enabled = false
 			targetPart:Destroy()
+
 			local amount = math.random(15, 25)
-			local PlayerDataService = require(script.Parent:WaitForChild("PlayerDataService"))
-			PlayerDataService.AddScrap(player, amount)
+			unbankedScrap[player.UserId] = (unbankedScrap[player.UserId] or 0) + amount
+
+			log:Info("Player scavenged unbanked scrap", {
+				Player = player.Name,
+				ScrapFound = amount,
+				TotalUnbanked = unbankedScrap[player.UserId],
+			})
 
 			if notificationRemote then
 				notificationRemote:FireClient(player, {
 					MessageKey = "SCRAP_SALVAGED",
-					MessageText = string.format("Salvaged +%d Scrap from emergency cache!", amount),
+					MessageText = string.format("Found +%d unbanked Scrap (Total: %d)! Extract on the train to secure it.", amount, unbankedScrap[player.UserId]),
 					Severity = "Success",
-					Duration = 3,
+					Duration = 4,
 				})
 			end
 
@@ -218,7 +283,9 @@ function ObjectiveService.BindInteractions()
 			local artifactId = prompt:GetAttribute("ArtifactId") :: string?
 			if not artifactId then return end
 
+			prompt.Enabled = false
 			targetPart:Destroy()
+
 			if not collectedArtifacts[player.UserId] then
 				collectedArtifacts[player.UserId] = {}
 			end
@@ -255,7 +322,7 @@ function ObjectiveService.StartMission(missionType: GameTypes.MissionType?): Gam
 		IsComplete = false,
 	}
 
-	log:Info("Initiating mission instance...", {
+	log:Info("Initiating mission instance with strict validation...", {
 		Id = activeMission.Id,
 		Type = activeMission.Type,
 		Target = activeMission.TargetProgress,
@@ -385,7 +452,6 @@ function ObjectiveService.SpawnArtifacts()
 	artifactFolder.Parent = station
 	table.insert(spawnedEntities, artifactFolder)
 
-	-- Spawn SignalWhistle in Underground Tunnel
 	local whistlePart = createPart(
 		artifactFolder,
 		"Artifact_SignalWhistle",
@@ -457,6 +523,7 @@ function ObjectiveService.Reset()
 	end
 
 	table.clear(collectedArtifacts)
+	table.clear(unbankedScrap)
 
 	if objectiveUpdatedRemote then
 		objectiveUpdatedRemote:FireAllClients("", 0, 0, false)

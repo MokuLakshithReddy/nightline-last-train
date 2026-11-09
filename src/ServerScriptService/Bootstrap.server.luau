@@ -74,9 +74,37 @@ requestEquipmentRemote.OnServerEvent:Connect(function(player: Player, slotIndex:
 
 	local validSlot, slot = SecurityService.ValidateNumber(slotIndex, 1, 2)
 	local validId, id = SecurityService.ValidateString(itemId, 32)
-	if not validSlot or not slot or not validId then return end
+	if not validSlot or not slot then return end
 
-	InventoryService.SetSlotItem(player, slot, id)
+	-- Check Phase Restriction (Problem 3)
+	local currentPhase = RoundService.GetCurrentState()
+	local allowedPhase = (currentPhase == "WAITING" or currentPhase == "INTERMISSION" or currentPhase == "BOARDING")
+	if not allowedPhase then
+		local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?
+		if notifRemote then
+			notifRemote:FireClient(player, {
+				MessageKey = "EQUIP_RESTRICTED",
+				MessageText = "Equipment loadouts can only be changed in the Hub before departure!",
+				Severity = "Warning",
+				Duration = 3,
+			})
+		end
+		return
+	end
+
+	-- Authoritative inventory equipment change with ownership validation
+	local success, reason = InventoryService.SetSlotItem(player, slot, validId and id or nil)
+	if not success and reason then
+		local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?
+		if notifRemote then
+			notifRemote:FireClient(player, {
+				MessageKey = "EQUIP_REJECTED",
+				MessageText = reason,
+				Severity = "Warning",
+				Duration = 3,
+			})
+		end
+	end
 end)
 
 local requestDestinationVoteRemote = remotesFolder:WaitForChild("RequestDestinationVote") :: RemoteEvent

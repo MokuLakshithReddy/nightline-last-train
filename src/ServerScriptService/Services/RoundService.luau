@@ -227,13 +227,22 @@ function RoundService.StartGameLoop()
 				for userId, player in pairs(activeRoster) do
 					local didExtract = extractedPlayers[userId] == true
 					local artifacts = ObjectiveService.GetCollectedArtifacts(player)
-					RewardService.AwardExpeditionRewards(currentRoundId, player, missionDone, didExtract, 0, artifacts)
+					local unbanked = ObjectiveService.GetUnbankedScrap(player)
+
+					RewardService.AwardExpeditionRewards(
+						currentRoundId,
+						player,
+						missionDone,
+						didExtract,
+						unbanked,
+						artifacts
+					)
 				end
 
 				if missionDone then
 					broadcastNotification("EXPEDITION COMPLETE: Mission targets secured!", "Success")
 				else
-					broadcastNotification("EXPEDITION OVER: Survivors retrieved.", "Info")
+					broadcastNotification("EXPEDITION OVER: Returning to Hub.", "Info")
 				end
 
 				RoundService.WaitForPhase()

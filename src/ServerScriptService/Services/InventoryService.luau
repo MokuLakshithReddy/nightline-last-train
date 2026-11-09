@@ -1,6 +1,6 @@
 --!strict
 -- InventoryService.luau
--- Authoritative equipment slots and mission item tracking per player
+-- Authoritative equipment slots, mission item tracking, and ownership validation
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,7 +16,7 @@ local inventoryUpdatedRemote: RemoteEvent? = nil
 local InventoryService = {}
 
 function InventoryService.Init()
-	log:Info("Initializing InventoryService...")
+	log:Info("Initializing InventoryService with ownership checks...")
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	inventoryUpdatedRemote = remotes:WaitForChild("InventoryUpdated") :: RemoteEvent
 
@@ -47,19 +47,61 @@ function InventoryService.GetInventory(player: Player): GameTypes.PlayerInventor
 	return inventories[player.UserId]
 end
 
-function InventoryService.SetSlotItem(player: Player, slot: number, itemId: string?): boolean
+-- Validates whether a player owns or is eligible to equip an item (Problem 3)
+function InventoryService.ValidateItemEligibility(player: Player, itemId: string): (boolean, string?)
+	local itemDef = ItemConfig.Items[itemId]
+	if not itemDef then
+		return false, "Unknown item ID"
+	end
+
+	-- Starter equipment available to all crew members
+	if itemId == "Flashlight" or itemId == "Battery" then
+		return true, nil
+	end
+
+	-- Mission items cannot be equipped into standard equipment slots
+	if itemDef.Type == "MissionItem" then
+		return false, "Mission items are tracked automatically"
+	end
+
+	-- Upgraded/Consumable items require PlayerData check (e.g. Flare requires Workbench Locker)
+	local PlayerDataService = require(script.Parent:WaitForChild("PlayerDataService"))
+	local profile = PlayerDataService.GetProfile(player)
+	if not profile then
+		return false, "Player profile not loaded"
+	end
+
+	if itemId == "Flare" then
+		if not profile.TrainUpgrades["WorkbenchLocker"] and profile.Scrap < 10 then
+			return false, "Requires Equipment Locker train upgrade or Scrap"
+		end
+		return true, nil
+	end
+
+	return true, nil
+end
+
+function InventoryService.SetSlotItem(player: Player, slot: number, itemId: string?): (boolean, string?)
 	local inv = inventories[player.UserId]
-	if not inv then return false end
+	if not inv then return false, "No inventory found" end
 
 	if not itemId then
 		if slot == 1 then inv.Slot1 = nil elseif slot == 2 then inv.Slot2 = nil end
 		InventoryService.Sync(player)
-		return true
+		return true, nil
+	end
+
+	local eligible, reason = InventoryService.ValidateItemEligibility(player, itemId)
+	if not eligible then
+		log:Warn("Player attempted to equip ineligible item", {
+			Player = player.Name,
+			ItemId = itemId,
+			Reason = reason,
+		})
+		return false, reason
 	end
 
 	local itemDef = ItemConfig.Items[itemId]
-	if not itemDef then return false end
-
 	local newItem: GameTypes.InventoryItem = {
 		Id = itemDef.Id,
 		Name = itemDef.Name,
@@ -72,11 +114,11 @@ function InventoryService.SetSlotItem(player: Player, slot: number, itemId: stri
 	elseif slot == 2 then
 		inv.Slot2 = newItem
 	else
-		return false
+		return false, "Invalid slot index"
 	end
 
 	InventoryService.Sync(player)
-	return true
+	return true, nil
 end
 
 function InventoryService.AddMissionItem(player: Player, itemId: string, count: number)
@@ -114,4 +156,3 @@ function InventoryService.Sync(player: Player)
 end
 
 return InventoryService
-

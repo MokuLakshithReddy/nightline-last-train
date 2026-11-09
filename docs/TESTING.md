@@ -26,7 +26,7 @@ Testing in NIGHTLINE is conducted across three levels:
 | **M2-T2** | Restore Power | `RestorePower` active | Collect 3 fuses & install in sockets | Breaker lights switch red to green, progress 3/3, mission completed | ✅ Passed |
 | **M2-T3** | Recover Cargo | `RecoverCargo` active | Pick up 2 crates & deliver to platform | Crates weld to back, platform pallet stores crates, progress 2/2 | ✅ Passed |
 | **M2-T4** | Repair Signal | `RepairSignal` active | Reboot 3 communication terminals | Terminal screens switch red offline to green online, progress 3/3 | ✅ Passed |
-| **M2-T5** | Scrap Caches | Round in `EXPLORATION` | Scavenge optional caches | Server awards +15 to +25 Scrap directly to player profile | ✅ Passed |
+| **M2-T5** | Scrap Caches | Round in `EXPLORATION` | Scavenge optional caches | Stored as unbanked loot in memory; banked only upon successful extraction | ✅ Passed |
 | **M2-T6** | Extraction Zone | Round enters `RETURN` | Check character position | Players inside extraction volume receive +50 Scrap extraction bonus | ✅ Passed |
 | **M2-T7** | Runtime Cleanup | Round enters `RESULTS`/`WAITING` | StationService.UnloadStation() | All active station parts, prompts, and dropped crates destroyed | ✅ Passed |
 | **M3-T1** | Hollow Model | Round enters `EXPLORATION` | MonsterService spawns model | Slender shadow figure with dark slate torso, head, particle smoke, glowing eyes, and Humanoid | ✅ Passed |
@@ -54,3 +54,8 @@ Testing in NIGHTLINE is conducted across three levels:
 | **M6-T4** | Mid-Round Disconnect | Player disconnects during run | PlayerRemoving handler | Safely removed from activeRoster; no nil exceptions or stuck timers | ✅ Passed |
 | **M6-T5** | All-Player Departure | All active players leave | RoundService abort check | Expedition safely aborts to Results and cleans up runtime station instances | ✅ Passed |
 | **M6-T6** | Late-Joiner Routing | Join while station active | CharacterAdded handler | Player spawns in Hub safe zone; spectator status assigned until next round | ✅ Passed |
+| **FIX-T1**| Unbanked Scrap Guard | Player eliminated with scrap | ObjectiveService unbanked table | Unbanked scrap not awarded to permanent profile unless extracted | ✅ Passed |
+| **FIX-T2**| Session Locking Lease| Dual server simulation | DataStore UpdateAsync with JobId | Conflicting session detected; aborts overwrite; releases on player leave | ✅ Passed |
+| **FIX-T3**| Equipment Phase Check| Request swap mid-exploration | Bootstrap phase verification | Swaps rejected outside Hub phases (`WAITING`/`INTERMISSION`/`BOARDING`) | ✅ Passed |
+| **FIX-T4**| Central Interaction Precondition | Interaction triggered | Central validator in ObjectiveService | Rejects if not rostered, dead, wrong phase, or wrong mission type | ✅ Passed |
+| **FIX-T5**| Persistent Idempotency & Stats | Expedition with 0 payout | RewardService.AwardExpeditionRewards | `LastProcessedRoundId` stored in profile; `Statistics.Runs` increments on all runs | ✅ Passed |

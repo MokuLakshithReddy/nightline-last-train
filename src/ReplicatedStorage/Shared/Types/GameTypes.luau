@@ -55,6 +55,11 @@ export type PlayerStatistics = {
 	ItemsRecovered: number,
 }
 
+export type SessionLock = {
+	JobId: string,
+	LockTimestamp: number,
+}
+
 export type PlayerProfile = {
 	SchemaVersion: number,
 	Scrap: number,
@@ -64,6 +69,8 @@ export type PlayerProfile = {
 	EquippedCosmetics: { [string]: string },
 	Artifacts: { [string]: boolean },
 	Statistics: PlayerStatistics,
+	SessionLock: SessionLock?,
+	LastProcessedRoundId: string?,
 }
 
 export type RoundStatePayload = {
@@ -82,4 +89,3 @@ export type NotificationPayload = {
 }
 
 return {}
-

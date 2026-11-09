@@ -1,6 +1,6 @@
 --!strict
 -- PlayerDataService.luau
--- Robust, versioned persistence layer using DataStoreService with safe retries
+-- Authoritative persistence layer with active session locking, serialized writes, and safe release
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -14,6 +14,7 @@ local log = Logger.new("PlayerDataService")
 
 local DATASTORE_NAME = "Nightline_PlayerData_v1"
 local CURRENT_SCHEMA_VERSION = 1
+local SESSION_LEASE_DURATION = 1200 -- 20 minutes lease timeout for orphaned locks
 
 local DefaultData: GameTypes.PlayerProfile = {
 	SchemaVersion = CURRENT_SCHEMA_VERSION,
@@ -29,12 +30,15 @@ local DefaultData: GameTypes.PlayerProfile = {
 		ObjectivesCompleted = 0,
 		ItemsRecovered = 0,
 	},
+	SessionLock = nil,
+	LastProcessedRoundId = nil,
 }
 
 local dataStore: DataStore? = nil
 local profilesCache: { [number]: GameTypes.PlayerProfile } = {}
 local isDirty: { [number]: boolean } = {}
 local loadFailed: { [number]: boolean } = {}
+local isSaving: { [number]: boolean } = {}
 
 local profileUpdatedRemote: RemoteEvent? = nil
 
@@ -88,12 +92,21 @@ local function reconcileProfile(loaded: any): GameTypes.PlayerProfile
 		profile.Statistics.ObjectivesCompleted = loaded.Statistics.ObjectivesCompleted or 0
 		profile.Statistics.ItemsRecovered = loaded.Statistics.ItemsRecovered or 0
 	end
+	if type(loaded.SessionLock) == "table" then
+		profile.SessionLock = {
+			JobId = tostring(loaded.SessionLock.JobId or ""),
+			LockTimestamp = tonumber(loaded.SessionLock.LockTimestamp) or 0,
+		}
+	end
+	if type(loaded.LastProcessedRoundId) == "string" then
+		profile.LastProcessedRoundId = loaded.LastProcessedRoundId
+	end
 
 	return profile
 end
 
 function PlayerDataService.Init()
-	log:Info("Initializing PlayerDataService...")
+	log:Info("Initializing PlayerDataService with session locking...")
 
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local existing = remotes:FindFirstChild("ProfileUpdated") :: RemoteEvent?
@@ -110,7 +123,7 @@ function PlayerDataService.Init()
 		end)
 		if success and ds then
 			dataStore = ds
-			log:Info("Connected to DataStoreService successfully.")
+			log:Info("Connected to DataStoreService with session lock authority.")
 		else
 			log:Warn("DataStore access unavailable; utilizing local session cache.")
 		end
@@ -124,15 +137,16 @@ function PlayerDataService.Init()
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
-		PlayerDataService.SaveProfile(player)
+		PlayerDataService.SaveProfile(player, true)
 		profilesCache[player.UserId] = nil
 		isDirty[player.UserId] = nil
 		loadFailed[player.UserId] = nil
+		isSaving[player.UserId] = nil
 	end)
 
 	game:BindToClose(function()
 		for _, player in ipairs(Players:GetPlayers()) do
-			PlayerDataService.SaveProfile(player)
+			PlayerDataService.SaveProfile(player, true)
 		end
 	end)
 end
@@ -146,17 +160,60 @@ function PlayerDataService.LoadProfile(player: Player): GameTypes.PlayerProfile
 	local profile: GameTypes.PlayerProfile
 	if dataStore then
 		local key = "Player_" .. tostring(userId)
-		local success, result = pcall(function()
-			return dataStore:GetAsync(key)
-		end)
+		local currentJobId = game.JobId ~= "" and game.JobId or "StudioSession"
+		local lockSuccess = false
 
-		if success then
-			profile = reconcileProfile(result)
-			log:Info("Loaded persistent profile for player", { UserId = userId, Scrap = profile.Scrap })
-		else
-			log:Error("Failed to fetch DataStore key; marking read-only to prevent overwrite", {
+		for attempt = 1, 3 do
+			local success, result = pcall(function()
+				return dataStore:UpdateAsync(key, function(storedData)
+					local current = reconcileProfile(storedData)
+					local now = os.time()
+
+					-- Check existing session lock
+					if current.SessionLock and current.SessionLock.JobId ~= currentJobId then
+						local elapsed = now - current.SessionLock.LockTimestamp
+						if elapsed < SESSION_LEASE_DURATION then
+							-- Active session lock held by another server!
+							log:Warn("Active session lock held by another server; aborting takeover", {
+								UserId = userId,
+								HoldingJobId = current.SessionLock.JobId,
+								ElapsedSeconds = elapsed,
+							})
+							return nil
+						end
+					end
+
+					-- Acquire session lock for this server instance
+					current.SessionLock = {
+						JobId = currentJobId,
+						LockTimestamp = now,
+					}
+					return current
+				end)
+			end)
+
+			if success and result then
+				profile = result
+				lockSuccess = true
+				log:Info("Acquired session lock and loaded profile", {
+					UserId = userId,
+					Scrap = profile.Scrap,
+					JobId = currentJobId,
+				})
+				break
+			else
+				log:Warn("Session lock acquisition attempt failed, retrying...", {
+					UserId = userId,
+					Attempt = attempt,
+					Error = tostring(result),
+				})
+				task.wait(1.5 * attempt)
+			end
+		end
+
+		if not lockSuccess then
+			log:Error("Failed to acquire session lock; setting profile to read-only to prevent data corruption", {
 				UserId = userId,
-				Error = tostring(result),
 			})
 			loadFailed[userId] = true
 			profile = deepCopy(DefaultData)
@@ -217,7 +274,6 @@ function PlayerDataService.PurchaseUpgrade(player: Player, upgradeId: string): (
 		return false, "Insufficient Scrap balance"
 	end
 
-	-- Deduct scrap and mark owned
 	profile.Scrap -= upgradeDef.CostScrap
 	profile.TrainUpgrades[upgradeId] = true
 	isDirty[player.UserId] = true
@@ -239,36 +295,90 @@ function PlayerDataService.Sync(player: Player, profile: GameTypes.PlayerProfile
 	end
 end
 
-function PlayerDataService.SaveProfile(player: Player)
+-- Serialized save with session lock verification and release on departure
+function PlayerDataService.SaveProfile(player: Player, isReleasing: boolean?)
 	local userId = player.UserId
 	local profile = profilesCache[userId]
 	if not profile then return end
+
 	if loadFailed[userId] then
-		log:Warn("Skipping save because initial load failed; preventing data overwrite", { UserId = userId })
-		return
-	end
-	if not isDirty[userId] then
+		log:Warn("Skipping save because session lock/load was unsuccessful; preventing overwrite", { UserId = userId })
 		return
 	end
 
+	if not isDirty[userId] and not isReleasing then
+		return
+	end
+
+	-- Mutex: wait if a save operation is already in-flight for this player
+	while isSaving[userId] do
+		task.wait(0.2)
+	end
+	isSaving[userId] = true
+
 	if dataStore then
 		local key = "Player_" .. tostring(userId)
+		local currentJobId = game.JobId ~= "" and game.JobId or "StudioSession"
 		local retries = 3
 		local saved = false
+
 		for attempt = 1, retries do
 			local success, err = pcall(function()
-				dataStore:UpdateAsync(key, function(_oldData)
-					return profile
+				dataStore:UpdateAsync(key, function(storedData)
+					local current = reconcileProfile(storedData)
+
+					-- Verify we still own the session lock
+					if current.SessionLock and current.SessionLock.JobId ~= currentJobId then
+						local elapsed = os.time() - current.SessionLock.LockTimestamp
+						if elapsed < SESSION_LEASE_DURATION then
+							log:Error("Session lock was stolen by another server; aborting save to protect data", {
+								UserId = userId,
+								HoldingJobId = current.SessionLock.JobId,
+							})
+							return nil
+						end
+					end
+
+					-- Apply in-memory modifications
+					current.Scrap = profile.Scrap
+					current.UnlockedStations = profile.UnlockedStations
+					current.TrainUpgrades = profile.TrainUpgrades
+					current.OwnedCosmetics = profile.OwnedCosmetics
+					current.EquippedCosmetics = profile.EquippedCosmetics
+					current.Artifacts = profile.Artifacts
+					current.Statistics = profile.Statistics
+					current.LastProcessedRoundId = profile.LastProcessedRoundId
+
+					if isReleasing then
+						current.SessionLock = nil
+						log:Info("Releasing session lock for departing player", { UserId = userId })
+					else
+						current.SessionLock = {
+							JobId = currentJobId,
+							LockTimestamp = os.time(),
+						}
+					end
+
+					return current
 				end)
 			end)
+
 			if success then
 				saved = true
 				isDirty[userId] = false
-				log:Info("Profile saved to DataStore", { UserId = userId, Attempt = attempt })
+				log:Info("Profile saved successfully to DataStore", {
+					UserId = userId,
+					Attempt = attempt,
+					Released = isReleasing == true,
+				})
 				break
 			else
-				log:Warn("DataStore save retry failed", { UserId = userId, Attempt = attempt, Error = tostring(err) })
-				task.wait(1 * attempt)
+				log:Warn("DataStore save retry failed", {
+					UserId = userId,
+					Attempt = attempt,
+					Error = tostring(err),
+				})
+				task.wait(1.2 * attempt)
 			end
 		end
 
@@ -278,6 +388,8 @@ function PlayerDataService.SaveProfile(player: Player)
 	else
 		isDirty[userId] = false
 	end
+
+	isSaving[userId] = false
 end
 
 return PlayerDataService
