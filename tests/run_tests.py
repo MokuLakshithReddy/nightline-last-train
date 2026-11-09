@@ -331,7 +331,7 @@ def test_destination_voting_ui():
 
 
 # =========================================================================
-# 4. Hollow Perception & LOS Raycasting (FIX-T12)
+# 4. Hollow Perception & Noise Cadence (FIX-T12, FIX-T30)
 # =========================================================================
 
 @test_case("Hollow raycast filters creature model and re-validates after windup (FIX-T12)")
@@ -345,6 +345,111 @@ def test_hollow_los_raycasting():
     assert "MonsterConfig.Combat.AttackWindupSeconds" in content, "Missing AttackWindupSeconds reference"
     assert "hasLineOfSight(context.EyePart.Position, finalChar, context.Model)" in content, \
         "Must recheck line of sight after windup before eliminating target"
+
+
+@test_case("Hollow footstep noise cadence throttling, airborne/stationary guards, and 6-player load (FIX-T30)")
+def test_hollow_noise_cadence_throttling():
+    with open("src/ServerScriptService/Services/MonsterService.luau", "r", encoding="utf-8") as f:
+        service_content = f.read()
+    with open("src/ReplicatedStorage/Shared/Config/MonsterConfig.luau", "r", encoding="utf-8") as f:
+        config_content = f.read()
+
+    # 1. Configured cadence intervals
+    assert "WalkStepInterval = 0.5" in config_content, "Must define WalkStepInterval in MonsterConfig"
+    assert "RunStepInterval = 0.3" in config_content, "Must define RunStepInterval in MonsterConfig"
+    assert "MinStepDistance = 2.0" in config_content, "Must define MinStepDistance in MonsterConfig"
+
+    # 2. Source guards in MonsterService
+    assert "hum.FloorMaterial == Enum.Material.Air" in service_content, "Airborne players must not emit footstep noise"
+    assert "hum.MoveDirection.Magnitude <= 0.1" in service_content, "Stationary players must not emit footstep noise"
+    assert "RoundService.IsPlayerInRoster(player)" in service_content, "Players outside active roster must be filtered"
+    assert "(now - lastTime) >= interval and distMoved >= minDist" in service_content, \
+        "Noise emission must be bounded by both time interval and distance moved"
+    assert "noiseListeningConnection:Disconnect()" in service_content, "Previous listener must be cleanly disconnected"
+    assert "table.clear(lastNoiseTime)" in service_content, "Must clear lastNoiseTime on spawn/despawn"
+
+    # 3. 6-player scenario simulation across 5 seconds at 60 FPS (300 frames per player)
+    walk_interval = 0.5
+    run_interval = 0.3
+    min_dist = 2.0
+
+    class SimulatedPlayer:
+        def __init__(self, uid, is_sprinting=False, is_stationary=False, is_airborne=False, in_roster=True):
+            self.uid = uid
+            self.is_sprinting = is_sprinting
+            self.is_stationary = is_stationary
+            self.is_airborne = is_airborne
+            self.in_roster = in_roster
+            self.pos = 0.0  # 1D position along line
+            self.speed = 19.0 if is_sprinting else 10.0  # studs/sec
+
+    players = [
+        SimulatedPlayer(1, is_sprinting=True),          # Sprinting in station
+        SimulatedPlayer(2, is_sprinting=True),          # Sprinting in station
+        SimulatedPlayer(3, is_sprinting=False),         # Walking in station
+        SimulatedPlayer(4, is_stationary=True),         # Standing still
+        SimulatedPlayer(5, is_airborne=True),           # Jumping in air
+        SimulatedPlayer(6, in_roster=False),            # Non-rostered player in Hub
+    ]
+
+    last_noise_time = {}
+    last_noise_pos = {}
+    emitted_events = {p.uid: 0 for p in players}
+
+    dt = 1.0 / 60.0
+    total_time = 5.0
+    steps = int(total_time / dt)
+
+    for step in range(steps):
+        t = step * dt
+        for p in players:
+            # Advance position if moving
+            if not p.is_stationary and not p.is_airborne:
+                p.pos += p.speed * dt
+
+            # Guards
+            if not p.in_roster or p.is_stationary or p.is_airborne:
+                last_noise_pos[p.uid] = None
+                continue
+
+            prev_p = last_noise_pos.get(p.uid)
+            if prev_p is None:
+                last_noise_pos[p.uid] = p.pos
+                continue
+
+            interval = run_interval if p.is_sprinting else walk_interval
+            prev_t = last_noise_time.get(p.uid, -999.0)
+            dist_moved = abs(p.pos - prev_p)
+
+            if (t - prev_t) >= interval and dist_moved >= min_dist:
+                last_noise_time[p.uid] = t
+                last_noise_pos[p.uid] = p.pos
+                emitted_events[p.uid] += 1
+
+    # Verify per-player limits over 5 seconds (300 frames)
+    # Unthrottled 60 FPS would have been 300 events per moving player!
+    # With throttling:
+    # Sprinting player (0.3s cadence): max 5.0 / 0.3 = 17 events (~3.4 events/sec)
+    assert emitted_events[1] <= 18, f"Sprinting player emitted {emitted_events[1]} events; expected <= 18"
+    assert emitted_events[1] >= 15, f"Sprinting player should emit periodic footsteps, got {emitted_events[1]}"
+    rate_sprint = emitted_events[1] / total_time
+    assert rate_sprint <= 3.6, f"Sprinting emission rate {rate_sprint}/s exceeded 3.6/s"
+
+    # Walking player (0.5s cadence): max 5.0 / 0.5 = 11 events (~2.0 events/sec)
+    assert emitted_events[3] <= 11, f"Walking player emitted {emitted_events[3]} events; expected <= 11"
+    assert emitted_events[3] >= 9, f"Walking player should emit periodic footsteps, got {emitted_events[3]}"
+    rate_walk = emitted_events[3] / total_time
+    assert rate_walk <= 2.2, f"Walking emission rate {rate_walk}/s exceeded 2.2/s"
+
+    # Guards: stationary, airborne, unrostered players must emit ZERO events
+    assert emitted_events[4] == 0, "Stationary player must emit 0 footstep events"
+    assert emitted_events[5] == 0, "Airborne player must emit 0 footstep events"
+    assert emitted_events[6] == 0, "Unrostered player must emit 0 footstep events"
+
+    # Total 6-player events over 5 seconds: at most ~40 events instead of 1800 unthrottled frames!
+    total_events = sum(emitted_events.values())
+    assert total_events <= 50, f"Total 6-player events was {total_events}, expected <= 50"
+
 
 
 # =========================================================================
@@ -633,6 +738,7 @@ def main():
     test_destination_voting()
     test_destination_voting_ui()
     test_hollow_los_raycasting()
+    test_hollow_noise_cadence_throttling()
     test_phase_wait_generation()
     test_profile_reconciliation()
     test_interaction_prompt_security()

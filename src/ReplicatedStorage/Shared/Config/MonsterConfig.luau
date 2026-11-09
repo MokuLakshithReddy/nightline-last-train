@@ -21,6 +21,9 @@ local MonsterConfig = {
 			RunNoiseRadius = 45,
 			InteractionNoiseRadius = 35,
 			FlareNoiseRadius = 75,
+			WalkStepInterval = 0.5, -- footstep cadence for walking (seconds)
+			RunStepInterval = 0.3,  -- footstep cadence for sprinting (seconds)
+			MinStepDistance = 2.0,  -- minimum distance (studs) traveled between footsteps
 		},
 		Vision = {
 			MaxDistance = 50,
