@@ -18,6 +18,8 @@ local currentMonsterModel: Model? = nil
 local currentAIContext: HollowAI.HollowContext? = nil
 local aiLoopThread: thread? = nil
 local noiseListeningConnection: RBXScriptConnection? = nil
+local lastNoiseTime: { [number]: number } = {}
+local lastNoisePos: { [number]: Vector3 } = {}
 
 local notificationRemote: RemoteEvent? = nil
 local playerStatusRemote: RemoteEvent? = nil
@@ -44,6 +46,11 @@ function MonsterService.Init()
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
 	playerStatusRemote = remotes:WaitForChild("PlayerStatusUpdated") :: RemoteEvent
+
+	Players.PlayerRemoving:Connect(function(player: Player)
+		lastNoiseTime[player.UserId] = nil
+		lastNoisePos[player.UserId] = nil
+	end)
 
 	HollowAI.OnPlayerAttacked:Connect(function(player: Player)
 		log:Info("Handling player elimination by The Hollow", { Player = player.Name })
@@ -214,18 +221,83 @@ function MonsterService.SpawnMonster()
 			end
 		end)
 
-		-- Listen for movement noise derived from server-authoritative movement state
+		-- Ensure only one active listener exists per spawned Hollow
+		if noiseListeningConnection then
+			noiseListeningConnection:Disconnect()
+			noiseListeningConnection = nil
+		end
+		table.clear(lastNoiseTime)
+		table.clear(lastNoisePos)
+
+		-- Listen for movement noise with distance & interval throttling
 		noiseListeningConnection = game:GetService("RunService").Heartbeat:Connect(function()
+			local now = os.clock()
+			local roundServiceLoaded, RoundService = pcall(function()
+				return require(script.Parent:WaitForChild("RoundService"))
+			end)
+
+			local isStationPhase = false
+			if roundServiceLoaded and RoundService then
+				local phase = RoundService.GetCurrentState()
+				isStationPhase = (phase == "EXPLORATION" or phase == "EXTRACTION")
+			end
+
+			-- Only emit movement footsteps while station expedition is active
+			if not isStationPhase then return end
+
 			for _, player in ipairs(Players:GetPlayers()) do
+				local userId = player.UserId
+
+				-- Exclude players outside the active station roster
+				if roundServiceLoaded and RoundService and not RoundService.IsPlayerInRoster(player) then
+					lastNoisePos[userId] = nil
+					continue
+				end
+
 				local char = player.Character
-				if char and char:FindFirstChild("HumanoidRootPart") then
-					local hum = char:FindFirstChildOfClass("Humanoid")
-					if hum and hum.Health > 0 and hum.MoveDirection.Magnitude > 0.1 then
-						local isSprinting = MovementService.IsPlayerSprinting(player)
-						local radius = isSprinting and MonsterConfig.Perception.Hearing.RunNoiseRadius or MonsterConfig.Perception.Hearing.WalkNoiseRadius
-						local loudness = isSprinting and 2.0 or 1.0
-						HollowAI.EmitNoise((char.HumanoidRootPart :: BasePart).Position, radius, loudness, player)
-					end
+				local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+				-- Avoid emitting when dead or missing root part
+				if not hrp or not hum or hum.Health <= 0 then
+					lastNoisePos[userId] = nil
+					continue
+				end
+
+				-- Avoid emitting when stationary (no active movement direction)
+				if hum.MoveDirection.Magnitude <= 0.1 then
+					lastNoisePos[userId] = hrp.Position
+					continue
+				end
+
+				-- Avoid emitting when airborne (jumping or falling in air)
+				if hum.FloorMaterial == Enum.Material.Air then
+					lastNoisePos[userId] = nil
+					continue
+				end
+
+				local prevPos = lastNoisePos[userId]
+				if not prevPos then
+					lastNoisePos[userId] = hrp.Position
+					continue
+				end
+
+				local isSprinting = MovementService.IsPlayerSprinting(player)
+				local hearingConfig = MonsterConfig.Perception.Hearing
+				local interval = isSprinting and hearingConfig.RunStepInterval or hearingConfig.WalkStepInterval
+				local minDist = hearingConfig.MinStepDistance
+
+				local lastTime = lastNoiseTime[userId] or 0
+				local distMoved = (hrp.Position - prevPos).Magnitude
+
+				-- Cadence and distance-based footstep threshold
+				if (now - lastTime) >= interval and distMoved >= minDist then
+					lastNoiseTime[userId] = now
+					lastNoisePos[userId] = hrp.Position
+
+					local radius = isSprinting and hearingConfig.RunNoiseRadius or hearingConfig.WalkNoiseRadius
+					local loudness = isSprinting and 2.0 or 1.0
+					HollowAI.EmitNoise(hrp.Position, radius, loudness, player)
 				end
 			end
 		end)
@@ -243,6 +315,8 @@ function MonsterService.DespawnMonster()
 		noiseListeningConnection:Disconnect()
 		noiseListeningConnection = nil
 	end
+	table.clear(lastNoiseTime)
+	table.clear(lastNoisePos)
 
 	if currentAIContext then
 		currentAIContext.IsActive = false
@@ -259,6 +333,14 @@ function MonsterService.DespawnMonster()
 		currentMonsterModel:Destroy()
 		currentMonsterModel = nil
 	end
+end
+
+function MonsterService.IsNoiseListening(): boolean
+	return noiseListeningConnection ~= nil
+end
+
+function MonsterService.GetNoiseThrottlingState(player: Player): (number?, Vector3?)
+	return lastNoiseTime[player.UserId], lastNoisePos[player.UserId]
 end
 
 return MonsterService
