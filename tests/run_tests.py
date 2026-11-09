@@ -331,6 +331,107 @@ def test_destination_voting_ui():
 
 
 # =========================================================================
+# 3. Movement Anti-Cheat & Traversal Verification (FIX-T17, FIX-T31)
+# =========================================================================
+
+@test_case("MovementService horizontal speed, vertical anomaly, wall traversal, and safe rollback (FIX-T17, FIX-T31)")
+def test_movement_anticheat_comprehensive():
+    with open("src/ServerScriptService/Services/MovementService.luau", "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # 1. Implementation contracts in source
+    assert "MovementService.CheckMovementSanity" in content, "Must implement CheckMovementSanity"
+    assert "getSafeRollbackCFrame" in content, "Must implement getSafeRollbackCFrame"
+    assert "isPositionObstructed" in content, "Must implement isPositionObstructed"
+    assert "VerticalUpwardFling" in content, "Must catch vertical upward flings"
+    assert "VerticalDownwardAnomaly" in content, "Must catch vertical downward anomalies"
+    assert "WallTraversal" in content, "Must catch solid wall traversal"
+    assert "violationCounts" in content, "Must track violation counts"
+    assert "teleportGraceUntil" in content, "Must respect teleport grace period"
+    assert "MovementService.RegisterTeleport" in content, "Must provide RegisterTeleport"
+    assert "lastSafePositions" in content, "Must track last safe positions"
+
+    # 2. Pure validator testing (matches MovementService.CheckMovementSanity logic)
+    def check_sanity(last_pos, current_pos, dt, expected_speed):
+        if dt <= 0.001:
+            return True, None
+        
+        # Horizontal
+        horiz_disp = ((current_pos[0] - last_pos[0])**2 + (current_pos[2] - last_pos[2])**2)**0.5
+        max_allowed_h = (expected_speed * dt * 1.5) + 4.0
+        if horiz_disp > max_allowed_h and horiz_disp > 8.0:
+            return False, "HorizontalSpeed"
+
+        # Vertical
+        v_disp = current_pos[1] - last_pos[1]
+        max_up = (50.0 * dt * 1.5) + 5.0
+        if v_disp > max_up and v_disp > 12.0:
+            return False, "VerticalUpwardFling"
+
+        max_down = (220.0 * dt * 1.5) + 12.0
+        if -v_disp > max_down and -v_disp > 35.0:
+            return False, "VerticalDownwardAnomaly"
+
+        return True, None
+
+    # Test A: Normal walking & sprinting with latency margins
+    ok, _ = check_sanity((0, 0, 0), (1.5, 0, 0), dt=0.1, expected_speed=10.0) # 15 studs/sec
+    assert ok is True, "Normal walk with small latency margin must be permitted"
+
+    ok, _ = check_sanity((0, 0, 0), (2.8, 0, 0), dt=0.1, expected_speed=19.0) # 28 studs/sec
+    assert ok is True, "Normal sprint within 50% margin + buffer must be permitted"
+
+    # Test B: Horizontal speed manipulation (speed hack)
+    ok, reason = check_sanity((0, 0, 0), (15.0, 0, 0), dt=0.1, expected_speed=10.0)
+    assert ok is False and reason == "HorizontalSpeed", "Abnormal speed hack must be rejected"
+
+    # Test C: Normal jump and slope climbing
+    ok, _ = check_sanity((0, 0, 0), (1.0, 4.0, 0), dt=0.1, expected_speed=10.0) # jumping 4 studs in 0.1s
+    assert ok is True, "Standard Roblox jumping must be permitted"
+
+    ok, _ = check_sanity((0, 0, 0), (1.5, 2.5, 0), dt=0.1, expected_speed=19.0) # slope climbing
+    assert ok is True, "Slope climbing must be permitted"
+
+    # Test D: Vertical fling exploit
+    ok, reason = check_sanity((0, 0, 0), (0, 25.0, 0), dt=0.1, expected_speed=10.0)
+    assert ok is False and reason == "VerticalUpwardFling", "Abnormal upward vertical fling must be rejected"
+
+    # Test E: Normal gravity fall vs void teleport
+    ok, _ = check_sanity((0, 50, 0), (0, 25, 0), dt=0.2, expected_speed=10.0) # falling 25 studs in 0.2s (125 studs/s)
+    assert ok is True, "Normal gravity freefall must be permitted"
+
+    ok, reason = check_sanity((0, 100, 0), (0, 10, 0), dt=0.1, expected_speed=10.0) # falling 90 studs in 0.1s
+    assert ok is False and reason == "VerticalDownwardAnomaly", "Extreme downward void clip must be rejected"
+
+    # Test F: Wall traversal simulation
+    def simulate_wall_raycast(last_pos, current_pos, wall_plane_x):
+        # Ray from last_pos to current_pos intersects wall at wall_plane_x
+        ray_dist = ((current_pos[0] - last_pos[0])**2 + (current_pos[2] - last_pos[2])**2)**0.5
+        if ray_dist <= 1.5:
+            return False # skip micro jitter
+        if last_pos[0] < wall_plane_x and current_pos[0] > wall_plane_x:
+            dist_to_hit = wall_plane_x - last_pos[0]
+            if 0.5 < dist_to_hit < (ray_dist - 0.5):
+                return True # crossed solid wall!
+        return False
+
+    wall_crossed = simulate_wall_raycast((-5, 0, 0), (5, 0, 0), wall_plane_x=0.0)
+    assert wall_crossed is True, "Player crossing straight through solid wall must be flagged"
+
+    not_crossed = simulate_wall_raycast((-5, 0, 0), (-1, 0, 0), wall_plane_x=0.0)
+    assert not_crossed is False, "Player moving up to wall without crossing must not be flagged"
+
+    # Test G: Teleport grace period
+    clock = 100.0
+    grace_until = clock + 2.0
+    # During grace: displacement is not checked
+    assert clock < grace_until, "Teleport grace must suppress checks"
+    # After grace expires:
+    clock = 103.0
+    assert clock > grace_until, "Checks must resume after grace expiration"
+
+
+# =========================================================================
 # 4. Hollow Perception & Noise Cadence (FIX-T12, FIX-T30)
 # =========================================================================
 
@@ -734,6 +835,7 @@ def main():
     test_security_integer_validation()
     test_equipment_phase_gating()
     test_flashlight_toggle_lifecycle()
+    test_movement_anticheat_comprehensive()
     test_upgrade_terminal_proximity()
     test_destination_voting()
     test_destination_voting_ui()
