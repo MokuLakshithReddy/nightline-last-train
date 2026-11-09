@@ -8,7 +8,7 @@
   - Branch Protection: Enforced on `main` (pull request required, strict `Lint, Build & Test` CI checks required, direct pushes blocked)
   - Luau Linter (Selene 0.32.0): 0 errors, 0 warnings across all source modules
   - Rojo Place Compilation (v7.4.4): Verified (`Nightline.rbxlx` generated cleanly)
-  - Regression Test Suite (`tests/run_tests.py`): 24/24 automated test suites passing
+  - Regression Test Suite (`tests/run_tests.py`): 25/25 automated test suites passing
 - **Completed Milestones:**
   - Milestone 0: Environment, Tooling & Foundation (Automated CI Verified)
   - Milestone 1: Train Hub & Round Foundation (Automated CI Verified)
@@ -17,11 +17,11 @@
   - Milestone 4: Rewards, Train Upgrades, Artifacts & DataStore Persistence (Automated CI Verified)
   - Milestone 5: Mobile UX, Camera Transitions, Visual Effects & Dynamic Audio (Automated CI Verified)
   - Milestone 6: Security Hardening, Exploit Mitigation & Receipt Processing (Automated CI Verified)
-  - Milestone 7: Public Release Preparation & Staging Checklist (In Progress: Manual multi-client Studio staging sign-off pending)
+  - Milestone 7: Public Release Preparation & Staging Checklist (🟡 In Progress: Studio staging complete in `docs/STAGING_EVIDENCE.md`; live DataStore test and mobile QA pending)
 
 ---
 
-## Automated Test Suite Coverage (24/24 Passing)
+## Automated Test Suite Coverage (25/25 Passing)
 
 The automated regression test suite (`tests/run_tests.py`) validates core server authority, game loop mechanics, persistence integrity, and security invariants in CI prior to merge:
 
@@ -51,6 +51,7 @@ The automated regression test suite (`tests/run_tests.py`) validates core server
 | **FIX-T33** | DataStore Fail-Closed Mode | Differentiates intentional Studio mock mode from live DataStore failure; marks profiles non-writable and preserves dirty state on storage outage | ✅ Passed |
 | **FIX-T34** | Synchronized Server Clock | Eliminates process-local `os.clock()` comparisons across server and client; uses `Workspace:GetServerTimeNow()` for authoritative deadlines and bounded non-negative HUD countdowns | ✅ Passed |
 | **FIX-T35** | CI Contracts & Branch Protection | Gated by GitHub branch protection on `main`; verifies CI job name `Lint, Build & Test` matches required checks and validates lint/build/test pipeline triggers | ✅ Passed |
+| **FIX-T36** | Studio Staging Evidence | Validates execution evidence for Solo and 6-client multiplayer runs in `docs/STAGING_EVIDENCE.md` against Roblox Studio v0.746.0.7461269 and tested commit SHA | ✅ Passed |
 
 ---
 
@@ -65,7 +66,7 @@ The automated regression test suite (`tests/run_tests.py`) validates core server
 | **Milestone 4** | PlayerDataService session locking, cosmetic reconciliation, fail-closed persistence, upgrades | 🟢 Complete | `PlayerDataService.luau`, `RewardConfig.luau`, `FIX-T15`, `FIX-T33` |
 | **Milestone 5** | Responsive HUD prompts, CameraController cinematic travel sweeps, audio layering, fog transitions | 🟢 Complete | `CameraController.luau` (`FIX-T20`), `InteractionController.luau` (`FIX-T21`) |
 | **Milestone 6** | Security hardening, anti-cheat (speed/fling/wall), receipt durability, concurrency locks, analytics | 🟢 Complete | `SecurityService.luau` (`FIX-T13`), `MovementService.luau` (`FIX-T17`, `FIX-T31`), `PurchaseService.luau` (`FIX-T23`, `FIX-T27`, `FIX-T32`), `AnalyticsService.luau` (`FIX-T22`, `FIX-T29`) |
-| **Milestone 7** | Release documentation, Creator Dashboard guide, automated CI pipeline, manual staging pre-flight | 🟡 In Progress | `.github/workflows/ci.yml` (Runs #20, #21, #22 passing); manual Studio 6-player session pending |
+| **Milestone 7** | Release documentation, Creator Dashboard guide, automated CI pipeline, manual staging pre-flight | 🟡 In Progress | `.github/workflows/ci.yml` (Runs #20, #21, #22 passing); Roblox Studio solo & 6-player staging verified in `docs/STAGING_EVIDENCE.md` |
 
 ---
 
@@ -76,12 +77,9 @@ The automated regression test suite (`tests/run_tests.py`) validates core server
    - Pipeline stages:
      1. Luau Lint: `selene src/` ensures strict Luau standard library conformance (0 errors, 0 warnings).
      2. Compilation: `rojo build default.project.json --output Nightline.rbxlx` compiles the full DataModel hierarchy.
-     3. Regression Tests: `python tests/run_tests.py` executes all 23 test suites and generates `test_results.json`.
+     3. Regression Tests: `python tests/run_tests.py` executes all test suites and generates `test_results.json`.
    - Results are automatically recorded and preserved in GitHub Actions workflow runs (e.g., Runs #20, #21, #22).
-2. **Manual Pre-Flight Staging (Studio Multi-Client Session):**
-   - **Status:** ⏳ **PENDING PHYSICAL STUDIO TESTING**
-   - Prior to publishing the place to public production on the Roblox Creator Dashboard, manual testing must be completed following `docs/RELEASE_GUIDE.md` Section 3.3:
-     - 6-client local server simulation in Roblox Studio.
-     - Physical gamepad and touch device interaction testing.
-     - Spatial audio balance and 3D positional reverb acoustics.
-     - Visual post-processing (ColorCorrection, Bloom, DepthOfField) quality checks across low-end and high-end hardware profiles.
+2. **Manual Pre-Flight Staging & Studio Evidence:**
+   - **Roblox Studio Solo & Multiplayer Staging:** 🟢 **VERIFIED** — Complete 1-player and 6-player local server sessions documented in [`docs/STAGING_EVIDENCE.md`](./STAGING_EVIDENCE.md) on Roblox Studio v0.746.0.7461269.
+   - **Private Live DataStore & Purchase Testing (Issue #50):** ⏳ Pending private live test environment verification.
+   - **Mobile (iPhone 14) & Gamepad Hardware QA (Issue #51):** ⏳ Pending device emulation and physical controller testing.

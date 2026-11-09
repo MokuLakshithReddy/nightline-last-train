@@ -1114,6 +1114,32 @@ def test_ci_workflow_contracts():
     assert "Branch Protection & CI Quality Gates" in release_content, "RELEASE_GUIDE.md must describe branch protection"
 
 
+@test_case("Roblox Studio staging evidence & checklist integrity (FIX-T36)")
+def test_staging_evidence_integrity():
+    with open("docs/STAGING_EVIDENCE.md", "r", encoding="utf-8") as f:
+        staging_content = f.read()
+
+    with open("docs/RELEASE_GUIDE.md", "r", encoding="utf-8") as f:
+        release_content = f.read()
+
+    # Evidence record validations
+    assert "0.746.0.7461269" in staging_content, "STAGING_EVIDENCE.md must record Studio product version"
+    assert "176419d50662dc6af48f5e4eb9be7437fc7bbf36" in staging_content, "STAGING_EVIDENCE.md must record tested commit SHA"
+    assert "STG-01" in staging_content, "STAGING_EVIDENCE.md must contain solo test STG-01"
+    assert "STG-02" in staging_content, "STAGING_EVIDENCE.md must contain 6-client test STG-02"
+    assert "STG-03" in staging_content, "STAGING_EVIDENCE.md must contain voting test STG-03"
+    assert "STG-04" in staging_content, "STAGING_EVIDENCE.md must contain creature AI test STG-04"
+    assert "STG-05" in staging_content, "STAGING_EVIDENCE.md must contain disconnect test STG-05"
+    assert "STG-06" in staging_content, "STAGING_EVIDENCE.md must contain all-player disconnect test STG-06"
+    assert "STG-07" in staging_content, "STAGING_EVIDENCE.md must contain clock sync test STG-07"
+    assert "PASSED & SIGNED OFF" in staging_content, "Must declare verified sign-off"
+
+    # Release guide alignment
+    assert "docs/STAGING_EVIDENCE.md" in release_content, "RELEASE_GUIDE.md must link to staging evidence"
+    assert "[x] **Solo Playthrough" in release_content, "RELEASE_GUIDE.md must mark Solo Playthrough complete"
+    assert "[x] **Multi-Player Stress Test" in release_content, "RELEASE_GUIDE.md must mark Multiplayer Stress Test complete"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1147,6 +1173,7 @@ def main():
     test_datastore_fail_closed_mode()
     test_synchronized_server_clock()
     test_ci_workflow_contracts()
+    test_staging_evidence_integrity()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")
