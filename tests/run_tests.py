@@ -1140,6 +1140,32 @@ def test_staging_evidence_integrity():
     assert "[x] **Multi-Player Stress Test" in release_content, "RELEASE_GUIDE.md must mark Multiplayer Stress Test complete"
 
 
+@test_case("DataStore live test evidence & persistence gating integrity (FIX-T37)")
+def test_datastore_live_evidence_integrity():
+    with open("docs/DATASTORE_LIVE_TEST_EVIDENCE.md", "r", encoding="utf-8") as f:
+        ds_content = f.read()
+
+    with open("docs/RELEASE_GUIDE.md", "r", encoding="utf-8") as f:
+        release_content = f.read()
+
+    # Evidence record validations
+    assert "GameData_v1" in ds_content, "DATASTORE_LIVE_TEST_EVIDENCE.md must reference GameData_v1"
+    assert "Player_<userId>" in ds_content, "DATASTORE_LIVE_TEST_EVIDENCE.md must specify key schema"
+    for pid in ["1001", "1002", "1003", "1004", "2001", "2002", "2003"]:
+        assert pid in ds_content, f"DATASTORE_LIVE_TEST_EVIDENCE.md must contain product/pass ID {pid}"
+
+    for scenario_id in ["DS-01", "DS-02", "DS-03", "DS-04", "DS-05", "DS-06", "DS-07"]:
+        assert scenario_id in ds_content, f"DATASTORE_LIVE_TEST_EVIDENCE.md must contain scenario {scenario_id}"
+
+    assert "PASSED & SIGNED OFF" in ds_content, "DATASTORE_LIVE_TEST_EVIDENCE.md must declare verified sign-off"
+
+    # Release guide alignment
+    assert "docs/DATASTORE_LIVE_TEST_EVIDENCE.md" in release_content, "RELEASE_GUIDE.md must link to live DataStore evidence"
+    assert "[x] **Live DataStore Persistence" in release_content, "RELEASE_GUIDE.md must mark Live DataStore Persistence complete"
+    assert "[x] **Developer Product Receipt Durability" in release_content, "RELEASE_GUIDE.md must mark Receipt Durability complete"
+    assert "[x] **Duplicate Callback Idempotency" in release_content, "RELEASE_GUIDE.md must mark Duplicate Callback Idempotency complete"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1174,6 +1200,7 @@ def main():
     test_synchronized_server_clock()
     test_ci_workflow_contracts()
     test_staging_evidence_integrity()
+    test_datastore_live_evidence_integrity()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")
