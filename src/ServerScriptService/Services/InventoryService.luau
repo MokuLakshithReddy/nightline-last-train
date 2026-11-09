@@ -114,3 +114,4 @@ function InventoryService.Sync(player: Player)
 end
 
 return InventoryService
+

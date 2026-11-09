@@ -41,3 +41,4 @@ local MonsterConfig = {
 }
 
 return MonsterConfig
+

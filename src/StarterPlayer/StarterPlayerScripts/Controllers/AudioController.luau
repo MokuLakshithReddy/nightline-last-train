@@ -12,3 +12,4 @@ function AudioController.Init()
 end
 
 return AudioController
+

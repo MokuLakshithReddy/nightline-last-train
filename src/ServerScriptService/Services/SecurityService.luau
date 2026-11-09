@@ -98,3 +98,4 @@ function SecurityService.ValidateNumber(value: any, min: number?, max: number?):
 end
 
 return SecurityService
+

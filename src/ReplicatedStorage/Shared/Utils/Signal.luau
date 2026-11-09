@@ -122,3 +122,4 @@ function Signal.Destroy(self: InternalSignal)
 end
 
 return Signal
+

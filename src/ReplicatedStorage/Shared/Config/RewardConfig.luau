@@ -85,3 +85,4 @@ local RewardConfig = {
 }
 
 return RewardConfig
+

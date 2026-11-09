@@ -12,3 +12,4 @@ function InteractionController.Init()
 end
 
 return InteractionController
+

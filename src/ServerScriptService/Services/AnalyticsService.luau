@@ -20,3 +20,4 @@ function AnalyticsService.TrackEvent(eventName: string, player: Player?, attribu
 end
 
 return AnalyticsService
+

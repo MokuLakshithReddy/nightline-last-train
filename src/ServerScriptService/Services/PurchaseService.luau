@@ -12,3 +12,4 @@ function PurchaseService.Init()
 end
 
 return PurchaseService
+

@@ -4,3 +4,4 @@ std = "roblox"
 unused_variable = "warn"
 shadowing = "warn"
 multiple_statements = "allow"
+

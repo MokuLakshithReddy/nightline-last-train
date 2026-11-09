@@ -23,3 +23,4 @@ function EffectsController.Init()
 end
 
 return EffectsController
+
