@@ -9,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local MonsterConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MonsterConfig"))
 local HollowAI = require(script.Parent.Parent:WaitForChild("AI"):WaitForChild("HollowAI"))
+local MovementService = require(script.Parent:WaitForChild("MovementService"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
 local log = Logger.new("MonsterService")
 
@@ -64,7 +65,9 @@ function MonsterService.Init()
 		local character = player.Character
 		if character and character:FindFirstChild("HumanoidRootPart") then
 			local root = character.HumanoidRootPart :: BasePart
+			MovementService.RegisterTeleport(player, 2.5)
 			root.CFrame = CFrame.new(GameConfig.World.HubCenter + Vector3.new(0, 3, 0))
+			root.AssemblyLinearVelocity = Vector3.zero
 		end
 	end)
 end
@@ -204,14 +207,14 @@ function MonsterService.SpawnMonster()
 			end
 		end)
 
-		-- Listen for movement noise (walking vs sprinting)
+		-- Listen for movement noise derived from server-authoritative movement state
 		noiseListeningConnection = game:GetService("RunService").Heartbeat:Connect(function()
 			for _, player in ipairs(Players:GetPlayers()) do
 				local char = player.Character
 				if char and char:FindFirstChild("HumanoidRootPart") then
 					local hum = char:FindFirstChildOfClass("Humanoid")
-					if hum and hum.MoveDirection.Magnitude > 0.1 then
-						local isSprinting = hum.WalkSpeed > (GameConfig.Player.WalkSpeed + 2)
+					if hum and hum.Health > 0 and hum.MoveDirection.Magnitude > 0.1 then
+						local isSprinting = MovementService.IsPlayerSprinting(player)
 						local radius = isSprinting and MonsterConfig.Perception.Hearing.RunNoiseRadius or MonsterConfig.Perception.Hearing.WalkNoiseRadius
 						local loudness = isSprinting and 2.0 or 1.0
 						HollowAI.EmitNoise((char.HumanoidRootPart :: BasePart).Position, radius, loudness, player)

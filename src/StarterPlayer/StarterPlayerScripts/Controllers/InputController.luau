@@ -24,6 +24,14 @@ local function setSprint(active: boolean)
 			humanoid.WalkSpeed = active and GameConfig.Player.SprintSpeed or GameConfig.Player.WalkSpeed
 		end
 	end
+
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	if remotes then
+		local requestSprint = remotes:FindFirstChild("RequestSprint") :: RemoteEvent?
+		if requestSprint then
+			requestSprint:FireServer(active)
+		end
+	end
 end
 
 local function handleSprintAction(_actionName: string, inputState: Enum.UserInputState, _inputObject: InputObject)

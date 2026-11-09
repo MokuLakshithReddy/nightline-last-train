@@ -25,6 +25,7 @@ local REQUIRED_REMOTES = {
 	"ProfileUpdated",
 	"ToggleFlashlight",
 	"ThrowFlare",
+	"RequestSprint",
 }
 
 for _, remoteName in ipairs(REQUIRED_REMOTES) do
@@ -50,6 +51,7 @@ local AnalyticsService = require(servicesFolder:WaitForChild("AnalyticsService")
 local PlayerDataService = require(servicesFolder:WaitForChild("PlayerDataService"))
 local InventoryService = require(servicesFolder:WaitForChild("InventoryService"))
 local EquipmentService = require(servicesFolder:WaitForChild("EquipmentService"))
+local MovementService = require(servicesFolder:WaitForChild("MovementService"))
 local InteractionService = require(servicesFolder:WaitForChild("InteractionService"))
 local StationService = require(servicesFolder:WaitForChild("StationService"))
 local ObjectiveService = require(servicesFolder:WaitForChild("ObjectiveService"))
@@ -64,6 +66,7 @@ AnalyticsService.Init()
 PlayerDataService.Init()
 InventoryService.Init()
 EquipmentService.Init()
+MovementService.Init()
 InteractionService.Init()
 StationService.Init()
 ObjectiveService.Init()
