@@ -78,20 +78,21 @@ The following checks are strictly automated, deterministic, and required to pass
   - Developer Product receipt idempotency and game pass catalog (`FIX-T23`).
 
 ### 3.3 Manual Studio Staging Checklist (Execute in Roblox Studio Before Public Toggle)
-Before flipping experience privacy from *Private* to *Public* on the Creator Dashboard, the release coordinator must execute this manual session in Roblox Studio (Test > Local Server):
+Before flipping experience privacy from *Private* to *Public* on the Creator Dashboard, the release coordinator must execute this manual session in Roblox Studio (Test > Local Server). Complete execution evidence is documented in [`docs/STAGING_EVIDENCE.md`](./STAGING_EVIDENCE.md) (tested on Roblox Studio v0.746.0.7461269, Commit `176419d50662dc6af48f5e4eb9be7437fc7bbf36`):
 
-- [ ] **Solo Playthrough:**
+- [x] **Solo Playthrough (Verified in `STG-01`):**
   - Launch Local Server (1 Player).
   - Walk to the Upgrade Terminal in the Hub carriage, trigger prompt, and verify shop HUD opens.
   - Wait for round departure; verify CameraController cinematic travel sweep plays and restores camera upon arrival at the station.
   - Complete primary mission (collect fuses / deliver cargo / reboot relay).
   - Return to extraction platform before countdown expires; verify return transition and expedition rewards in results screen.
-- [ ] **Multi-Player Stress Test (2–6 Players):**
-  - Launch Local Server (3 Players).
+- [x] **Multi-Player Stress Test (2–6 Players, Verified in `STG-02`, `STG-03`, `STG-04`, `STG-05`, `STG-06`, `STG-07`):**
+  - Launch Local Server (6 Players).
   - Test simultaneous carriage navigation without clipping or physics desync.
   - Test destination voting: vote for Station 001 and Station 002 from different clients; confirm tally updates on clients and winning destination loads.
-  - Have one player sprint near The Hollow; verify creature enters INVESTIGATE / CHASE. Have player break line-of-sight behind cover; verify creature loses target.
+  - Have one player sprint near The Hollow; verify creature enters INVESTIGATE / CHASE. Have player break line-of-sight behind cover; verify creature loses target and 0.4s windup does not clip behind cover.
   - Disconnect one player mid-exploration; verify active roster updates without halting the round loop.
-- [ ] **Mobile & Gamepad Emulation:**
+  - Disconnect all active players; verify immediate safe abort to RESULTS and station unloading.
+- [ ] **Mobile & Gamepad Emulation (Pending Issue #51):**
   - In Roblox Studio Device Emulator, select iPhone 14 and verify Sprint button and equipment buttons are accessible.
   - Connect a gamepad; verify ProximityPrompts display gamepad button prompts (`[X]`/`[A]`).
