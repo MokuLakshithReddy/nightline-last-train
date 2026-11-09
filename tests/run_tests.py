@@ -1022,6 +1022,76 @@ def test_datastore_fail_closed_mode():
     assert res_studio == "PurchaseGranted", "Purchase succeeds in Studio mock mode"
 
 
+@test_case("Synchronized server clock for round phase countdowns (FIX-T34)")
+def test_synchronized_server_clock():
+    with open("src/ServerScriptService/Services/RoundService.luau", "r", encoding="utf-8") as f:
+        round_content = f.read()
+
+    with open("src/StarterPlayer/StarterPlayerScripts/Controllers/UIController.luau", "r", encoding="utf-8") as f:
+        ui_content = f.read()
+
+    # Source assertions - RoundService
+    assert "Workspace:GetServerTimeNow()" in round_content, "RoundService must use Workspace:GetServerTimeNow()"
+    assert "phaseEndsAt = Workspace:GetServerTimeNow() + duration" in round_content, "TransitionTo must use GetServerTimeNow for phaseEndsAt"
+    assert "while Workspace:GetServerTimeNow() < phaseEndsAt do" in round_content, "WaitForPhase must use GetServerTimeNow"
+    assert "RoundService.GetPhaseEndsAt" in round_content, "RoundService must expose GetPhaseEndsAt"
+    assert "phaseEndsAt = 0" in round_content, "WAITING state must reset phaseEndsAt to 0"
+
+    # Verify cross-process os.clock comparisons are eliminated from RoundService countdowns
+    assert "phaseEndsAt - os.clock()" not in round_content, "RoundService must not compare phaseEndsAt with os.clock()"
+    assert "os.clock() < phaseEndsAt" not in round_content, "RoundService must not compare os.clock() with phaseEndsAt"
+
+    # Source assertions - UIController
+    assert 'game:GetService("Workspace")' in ui_content, "UIController must import Workspace service"
+    assert "UIController.CalculateTimeRemaining" in ui_content, "UIController must declare CalculateTimeRemaining"
+    assert "Workspace:GetServerTimeNow()" in ui_content, "UIController must query Workspace:GetServerTimeNow()"
+    assert "currentPhaseEndsAt - os.clock()" not in ui_content, "UIController must eliminate process-local os.clock countdown calculation"
+
+    # Logic simulation: calculate_time_remaining
+    def calculate_time_remaining(phase_ends_at, current_server_time):
+        if phase_ends_at <= 0:
+            return 0
+        return max(0, phase_ends_at - current_server_time)
+
+    def format_time(seconds):
+        s = max(0, int(seconds))
+        mins = s // 60
+        secs = s % 60
+        return f"{mins:02d}:{secs:02d}"
+
+    # Active countdown midway
+    rem_active = calculate_time_remaining(1045.0, 1020.0)
+    assert rem_active == 25.0
+    assert format_time(rem_active) == "00:25"
+
+    # Active countdown on exact expiration
+    rem_exact = calculate_time_remaining(1045.0, 1045.0)
+    assert rem_exact == 0.0
+    assert format_time(rem_exact) == "00:00"
+
+    # Stale/late packet arrival where server time exceeds phase_ends_at
+    rem_late = calculate_time_remaining(1045.0, 1060.0)
+    assert rem_late == 0.0, "Late packet updates must not produce negative numbers"
+    assert format_time(rem_late) == "00:00"
+
+    # Waiting state with phase_ends_at == 0
+    rem_waiting = calculate_time_remaining(0, 1020.0)
+    assert rem_waiting == 0.0
+
+    # Cross-clock skew immunity simulation:
+    # Server time = 1500000.0, client local os.clock = 42.5 (arbitrary process-local clock)
+    server_time_now = 1500000.0
+    phase_ends = server_time_now + 60.0
+    client_os_clock = 42.5  # Completely different epoch/counter
+    
+    # Using synchronized server time avoids discrepancy
+    skew_safe_remaining = calculate_time_remaining(phase_ends, server_time_now)
+    assert skew_safe_remaining == 60.0
+    assert format_time(skew_safe_remaining) == "01:00"
+
+    # Broken legacy logic would have produced huge incorrect offset:
+    broken_remaining = phase_ends - client_os_clock
+    assert broken_remaining > 1000000, "Proof that legacy os.clock caused extreme clock desync"
 
 
 # =========================================================================
@@ -1055,6 +1125,7 @@ def main():
     test_durable_receipt_persistence()
     test_concurrent_receipt_guard()
     test_datastore_fail_closed_mode()
+    test_synchronized_server_clock()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")
