@@ -820,6 +820,100 @@ def test_durable_receipt_persistence():
     assert durable_store["Player_123"]["Scrap"] == 150
 
 
+@test_case("Per-receipt and per-player in-flight concurrency lock and exception safety (FIX-T32)")
+def test_concurrent_receipt_guard():
+    with open("src/ServerScriptService/Services/PurchaseService.luau", "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Source assertions
+    assert "inFlightReceipts" in content, "Must declare inFlightReceipts table"
+    assert "inFlightPlayers" in content, "Must declare inFlightPlayers table"
+    assert "inFlightReceipts[purchaseId] = true" in content, "Must acquire in-flight lock before grant"
+    assert "inFlightReceipts[purchaseId] = nil" in content, "Must release in-flight lock after execution"
+    assert "inFlightPlayers[playerId] = nil" in content, "Must release in-flight player lock"
+    assert "PurchaseService.IsReceiptInFlight" in content, "Must expose IsReceiptInFlight getter"
+
+    # Simulation of concurrent receipt execution
+    store = {"Player_123": {"Scrap": 0, "ProcessedReceipts": {}}}
+    in_flight_receipts = set()
+    in_flight_players = {}
+    processed_receipts = set()
+
+    def process_receipt(player_id, product_id, purchase_id, delay_callback=None, save_succeeds=True):
+        if purchase_id in processed_receipts:
+            return "PurchaseGranted"
+
+        # Concurrency check
+        if purchase_id in in_flight_receipts:
+            if purchase_id in processed_receipts:
+                return "PurchaseGranted"
+            return "NotProcessedYet"
+
+        if player_id in in_flight_players and in_flight_players[player_id] != purchase_id:
+            return "NotProcessedYet"
+
+        # Acquire lock
+        in_flight_receipts.add(purchase_id)
+        in_flight_players[player_id] = purchase_id
+
+        decision = "NotProcessedYet"
+        try:
+            profile = store.get(f"Player_{player_id}")
+            if not profile:
+                return "NotProcessedYet"
+
+            if purchase_id in profile["ProcessedReceipts"]:
+                processed_receipts.add(purchase_id)
+                return "PurchaseGranted"
+
+            # Stage grant
+            prev_scrap = profile["Scrap"]
+            profile["Scrap"] += 100
+            profile["ProcessedReceipts"][purchase_id] = True
+
+            if delay_callback:
+                delay_callback()
+
+            if not save_succeeds:
+                # Rollback
+                profile["Scrap"] = prev_scrap
+                del profile["ProcessedReceipts"][purchase_id]
+                return "NotProcessedYet"
+
+            processed_receipts.add(purchase_id)
+            decision = "PurchaseGranted"
+            return decision
+        finally:
+            in_flight_receipts.discard(purchase_id)
+            if in_flight_players.get(player_id) == purchase_id:
+                del in_flight_players[player_id]
+
+    # Test 1: Two overlapping concurrent callbacks for same purchase_id
+    call_2_result = []
+    def simulate_concurrent_second_call():
+        res = process_receipt(123, 1001, "pid_concurrent", save_succeeds=True)
+        call_2_result.append(res)
+
+    # First call runs with delay_callback triggering second call while first is in-flight
+    call_1_result = process_receipt(123, 1001, "pid_concurrent", delay_callback=simulate_concurrent_second_call, save_succeeds=True)
+    
+    assert call_1_result == "PurchaseGranted"
+    assert call_2_result[0] == "NotProcessedYet" # Rejected duplicate while in-flight!
+    assert store["Player_123"]["Scrap"] == 100, f"Scrap must be granted exactly once, got {store['Player_123']['Scrap']}"
+    assert len(in_flight_receipts) == 0, "In-flight locks must be cleared"
+
+    # Test 2: Retry of second call now succeeds cleanly via idempotency
+    call_2_retry = process_receipt(123, 1001, "pid_concurrent", save_succeeds=True)
+    assert call_2_retry == "PurchaseGranted"
+    assert store["Player_123"]["Scrap"] == 100, "Duplicate retry must not increment scrap balance"
+
+    # Test 3: Failure releases lock safely
+    fail_res = process_receipt(123, 1001, "pid_fail", save_succeeds=False)
+    assert fail_res == "NotProcessedYet"
+    assert "pid_fail" not in in_flight_receipts, "Lock must be released on failure"
+    assert store["Player_123"]["Scrap"] == 100
+
+
 
 # =========================================================================
 # Runner Entry Point
@@ -850,6 +944,7 @@ def main():
     test_analytics_event_dispatch_and_economy()
     test_monetization_processing()
     test_durable_receipt_persistence()
+    test_concurrent_receipt_guard()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

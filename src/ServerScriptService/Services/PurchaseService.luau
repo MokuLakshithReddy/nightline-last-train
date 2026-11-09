@@ -16,6 +16,8 @@ local notificationRemote: RemoteEvent? = nil
 
 -- In-memory idempotency cache for processed receipts during server lifetime
 local processedReceipts: { [string]: boolean } = {}
+local inFlightReceipts: { [string]: boolean } = {}
+local inFlightPlayers: { [number]: string } = {}
 
 local PurchaseService = {}
 
@@ -43,132 +45,186 @@ function PurchaseService.ProcessReceipt(receiptInfo: ReceiptInfo): Enum.ProductP
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
-	-- 2. Verify player is currently active in the server
-	local player = Players:GetPlayerByUserId(playerId)
-	if not player then
-		log:Warn("Player not found in server during receipt processing; will retry when connected", {
-			PlayerId = playerId,
+	-- 2. Concurrency guard: if this exact receipt is already in flight, wait or defer to prevent duplicate grant
+	if inFlightReceipts[purchaseId] then
+		log:Warn("Concurrent ProcessReceipt callback already in flight for receipt; waiting/deferring", {
 			PurchaseId = purchaseId,
+			PlayerId = playerId,
 		})
+		local waited = 0
+		while inFlightReceipts[purchaseId] and waited < 2.0 do
+			task.wait(0.1)
+			waited += 0.1
+		end
+		if processedReceipts[purchaseId] then
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- 3. Verify player profile is writable (must hold valid active session lock)
-	if not PlayerDataService.IsProfileWritable(player) then
-		log:Warn("Player profile is not writable (session lock pending/failed); deferring receipt grant", {
-			PlayerId = playerId,
-			PurchaseId = purchaseId,
-		})
-		return Enum.ProductPurchaseDecision.NotProcessedYet
+	-- 3. Per-player receipt serialization: serialize processing if player has another receipt active
+	while inFlightPlayers[playerId] and inFlightPlayers[playerId] ~= purchaseId do
+		task.wait(0.1)
+		if processedReceipts[purchaseId] then
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
 	end
 
-	local profile = PlayerDataService.GetProfile(player)
-	if not profile then
-		log:Warn("Player profile missing in cache; deferring receipt grant", {
-			PlayerId = playerId,
-			PurchaseId = purchaseId,
-		})
-		return Enum.ProductPurchaseDecision.NotProcessedYet
-	end
-
-	-- 4. Durable receipt check: if already persisted in profile.ProcessedReceipts, return PurchaseGranted
-	if profile.ProcessedReceipts and profile.ProcessedReceipts[purchaseId] then
-		processedReceipts[purchaseId] = true
-		log:Info("Receipt already persisted in player profile; returning PurchaseGranted (durable idempotency)", {
-			PurchaseId = purchaseId,
-			PlayerId = playerId,
-		})
+	-- Check fast-path cache again in case another thread processed it while waiting
+	if processedReceipts[purchaseId] then
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
-	-- 5. Validate product against server-owned DeveloperProducts catalog
-	local productDef = MonetizationConfig.DeveloperProducts[productId]
-	if not productDef then
-		log:Error("Unknown developer product ID in receipt; rejecting grant without recording", {
-			ProductId = productId,
-			PurchaseId = purchaseId,
-		})
-		return Enum.ProductPurchaseDecision.NotProcessedYet
-	end
+	-- Acquire in-flight locks
+	inFlightReceipts[purchaseId] = true
+	inFlightPlayers[playerId] = purchaseId
 
-	-- 6. Prepare snapshot for atomic rollback in case durable persistence fails
-	local previousScrap = profile.Scrap
-	local previousOwnedCosmetic = profile.OwnedCosmetics[productDef.GrantValue]
-
-	if not profile.ProcessedReceipts then
-		profile.ProcessedReceipts = {}
-	end
-
-	-- Apply entitlement grant
-	local grantOk = false
-	if productDef.GrantType == "Scrap" then
-		grantOk = PlayerDataService.AddScrap(player, productDef.GrantValue)
-	elseif productDef.GrantType == "Cosmetic" then
-		grantOk = PlayerDataService.AddCosmetic(player, productDef.GrantValue)
-	end
-
-	if not grantOk then
-		log:Error("Failed to apply entitlement grant in memory; deferring receipt", {
-			Player = player.Name,
-			Product = productDef.Name,
-			PurchaseId = purchaseId,
-		})
-		return Enum.ProductPurchaseDecision.NotProcessedYet
-	end
-
-	-- Atomically record receipt ID in profile data
-	profile.ProcessedReceipts[purchaseId] = true
-
-	-- 7. Durably persist both entitlement and receipt marker before acknowledging purchase
-	local saveSuccess = PlayerDataService.SaveProfile(player)
-	if not saveSuccess then
-		-- Rollback in-memory changes so local cache reflects durable storage state
-		if productDef.GrantType == "Scrap" then
-			profile.Scrap = previousScrap
-		elseif productDef.GrantType == "Cosmetic" then
-			profile.OwnedCosmetics[productDef.GrantValue] = previousOwnedCosmetic
+	local function executeGrant(): Enum.ProductPurchaseDecision
+		-- 4. Verify player is currently active in the server
+		local player = Players:GetPlayerByUserId(playerId)
+		if not player then
+			log:Warn("Player not found in server during receipt processing; will retry when connected", {
+				PlayerId = playerId,
+				PurchaseId = purchaseId,
+			})
+			return Enum.ProductPurchaseDecision.NotProcessedYet
 		end
-		profile.ProcessedReceipts[purchaseId] = nil
-		PlayerDataService.Sync(player, profile)
 
-		log:Warn("Failed to durably persist receipt and entitlement; rolled back in-memory state and deferred receipt", {
+		-- 5. Verify player profile is writable (must hold valid active session lock)
+		if not PlayerDataService.IsProfileWritable(player) then
+			log:Warn("Player profile is not writable (session lock pending/failed); deferring receipt grant", {
+				PlayerId = playerId,
+				PurchaseId = purchaseId,
+			})
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		local profile = PlayerDataService.GetProfile(player)
+		if not profile then
+			log:Warn("Player profile missing in cache; deferring receipt grant", {
+				PlayerId = playerId,
+				PurchaseId = purchaseId,
+			})
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		-- 6. Durable receipt check: if already persisted in profile.ProcessedReceipts, return PurchaseGranted
+		if profile.ProcessedReceipts and profile.ProcessedReceipts[purchaseId] then
+			processedReceipts[purchaseId] = true
+			log:Info("Receipt already persisted in player profile; returning PurchaseGranted (durable idempotency)", {
+				PurchaseId = purchaseId,
+				PlayerId = playerId,
+			})
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+
+		-- 7. Validate product against server-owned DeveloperProducts catalog
+		local productDef = MonetizationConfig.DeveloperProducts[productId]
+		if not productDef then
+			log:Error("Unknown developer product ID in receipt; rejecting grant without recording", {
+				ProductId = productId,
+				PurchaseId = purchaseId,
+			})
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		-- 8. Prepare snapshot for atomic rollback in case durable persistence fails
+		local previousScrap = profile.Scrap
+		local previousOwnedCosmetic = profile.OwnedCosmetics[productDef.GrantValue]
+
+		if not profile.ProcessedReceipts then
+			profile.ProcessedReceipts = {}
+		end
+
+		-- Apply entitlement grant
+		local grantOk = false
+		if productDef.GrantType == "Scrap" then
+			grantOk = PlayerDataService.AddScrap(player, productDef.GrantValue)
+		elseif productDef.GrantType == "Cosmetic" then
+			grantOk = PlayerDataService.AddCosmetic(player, productDef.GrantValue)
+		end
+
+		if not grantOk then
+			log:Error("Failed to apply entitlement grant in memory; deferring receipt", {
+				Player = player.Name,
+				Product = productDef.Name,
+				PurchaseId = purchaseId,
+			})
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		-- Atomically record receipt ID in profile data
+		profile.ProcessedReceipts[purchaseId] = true
+
+		-- 9. Durably persist both entitlement and receipt marker before acknowledging purchase
+		local saveSuccess = PlayerDataService.SaveProfile(player)
+		if not saveSuccess then
+			-- Rollback in-memory changes so local cache reflects durable storage state
+			if productDef.GrantType == "Scrap" then
+				profile.Scrap = previousScrap
+			elseif productDef.GrantType == "Cosmetic" then
+				profile.OwnedCosmetics[productDef.GrantValue] = previousOwnedCosmetic
+			end
+			profile.ProcessedReceipts[purchaseId] = nil
+			PlayerDataService.Sync(player, profile)
+
+			log:Warn("Failed to durably persist receipt and entitlement; rolled back in-memory state and deferred receipt", {
+				Player = player.Name,
+				Product = productDef.Name,
+				PurchaseId = purchaseId,
+			})
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		-- 10. Durable save succeeded; record in fast-path cache and notify client
+		processedReceipts[purchaseId] = true
+
+		log:Info("Developer product purchase successfully granted, persisted, and acknowledged", {
 			Player = player.Name,
 			Product = productDef.Name,
 			PurchaseId = purchaseId,
+			GrantValue = productDef.GrantValue,
+		})
+
+		-- Telemetry logging
+		AnalyticsService.TrackEvent("DeveloperProductPurchased", player, {
+			PurchaseId = purchaseId,
+			ProductId = productId,
+			ProductName = productDef.Name,
+			GrantType = productDef.GrantType,
+			GrantValue = productDef.GrantValue,
+		})
+
+		-- Player feedback
+		if notificationRemote then
+			notificationRemote:FireClient(player, {
+				MessageKey = "PURCHASE_SUCCESS",
+				MessageText = string.format("Purchase successful: %s added to inventory!", productDef.Name),
+				Severity = "Success",
+				Duration = 4,
+			})
+		end
+
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+
+	local ok, result = pcall(executeGrant)
+
+	-- Release in-flight locks unconditionally on all paths
+	inFlightReceipts[purchaseId] = nil
+	if inFlightPlayers[playerId] == purchaseId then
+		inFlightPlayers[playerId] = nil
+	end
+
+	if not ok then
+		log:Error("Unexpected error during receipt execution; releasing locks and deferring", {
+			PurchaseId = purchaseId,
+			Error = tostring(result),
 		})
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- 8. Durable save succeeded; record in fast-path cache and notify client
-	processedReceipts[purchaseId] = true
-
-	log:Info("Developer product purchase successfully granted, persisted, and acknowledged", {
-		Player = player.Name,
-		Product = productDef.Name,
-		PurchaseId = purchaseId,
-		GrantValue = productDef.GrantValue,
-	})
-
-	-- Telemetry logging
-	AnalyticsService.TrackEvent("DeveloperProductPurchased", player, {
-		PurchaseId = purchaseId,
-		ProductId = productId,
-		ProductName = productDef.Name,
-		GrantType = productDef.GrantType,
-		GrantValue = productDef.GrantValue,
-	})
-
-	-- Player feedback
-	if notificationRemote then
-		notificationRemote:FireClient(player, {
-			MessageKey = "PURCHASE_SUCCESS",
-			MessageText = string.format("Purchase successful: %s added to inventory!", productDef.Name),
-			Severity = "Success",
-			Duration = 4,
-		})
-	end
-
-	return Enum.ProductPurchaseDecision.PurchaseGranted
+	return result
 end
 
 -- Checks and applies game pass ownership for a player
@@ -210,6 +266,10 @@ function PurchaseService.IsReceiptProcessed(purchaseId: string, player: Player?)
 		end
 	end
 	return false
+end
+
+function PurchaseService.IsReceiptInFlight(purchaseId: string): boolean
+	return inFlightReceipts[purchaseId] == true
 end
 
 function PurchaseService.SimulateReceipt(player: Player, productId: number, purchaseId: string?): (boolean, string?)
