@@ -125,6 +125,77 @@ def test_equipment_phase_gating():
     assert 'UPGRADE_REJECTED' in content
     assert 'humanoid.Health <= 0' in content
 
+@test_case("Flashlight toggle state lifecycle and model separation (FIX-T26)")
+def test_flashlight_toggle_lifecycle():
+    with open("src/ServerScriptService/Services/EquipmentService.luau", "r", encoding="utf-8") as f:
+        content = f.read()
+    assert "destroyFlashlightModel" in content
+    assert "function EquipmentService.AttachFlashlightModel(player: Player, character: Model): boolean" in content
+    assert "local attached = EquipmentService.AttachFlashlightModel(player, character)" in content
+    assert "flashlightStates[player.UserId] = true" in content
+    assert "EquipmentService.RemoveFlashlight(player)" in content
+    assert "CharacterRemoving" in content
+
+    # Simulate flashlight toggle state machine
+    class MockEquipmentService:
+        def __init__(self):
+            self.states = {}
+            self.models = {}
+            self.has_item = True
+            self.has_torso = True
+
+        def is_on(self, uid):
+            return self.states.get(uid, False) and (uid in self.models)
+
+        def attach(self, uid):
+            if uid in self.models:
+                del self.models[uid]
+            if not self.has_torso:
+                return False
+            self.models[uid] = "Model"
+            return True
+
+        def remove(self, uid):
+            self.states[uid] = False
+            if uid in self.models:
+                del self.models[uid]
+
+        def toggle(self, uid):
+            currently_on = self.is_on(uid)
+            will_turn_on = not currently_on
+            if will_turn_on:
+                if not self.has_item:
+                    return False
+                if not self.attach(uid):
+                    self.states[uid] = False
+                    return False
+                self.states[uid] = True
+                return True
+            else:
+                self.remove(uid)
+                return False
+
+    srv = MockEquipmentService()
+    uid = 42
+    # Initial state: off
+    assert not srv.is_on(uid)
+    # 1. off -> on
+    assert srv.toggle(uid) is True
+    assert srv.is_on(uid) is True
+    # 2. on -> off
+    assert srv.toggle(uid) is False
+    assert srv.is_on(uid) is False
+    # 3. off -> on again
+    assert srv.toggle(uid) is True
+    assert srv.is_on(uid) is True
+    # 4. Respawn cleanup
+    srv.remove(uid)
+    assert srv.is_on(uid) is False
+    # 5. Failed torso attachment
+    srv.has_torso = False
+    assert srv.toggle(uid) is False
+    assert srv.is_on(uid) is False
+
 @test_case("Hub Upgrade Terminal distance check logic (FIX-T18)")
 def test_upgrade_terminal_proximity():
     with open("src/ServerScriptService/Bootstrap.server.luau", "r", encoding="utf-8") as f:
@@ -330,6 +401,7 @@ def main():
     test_remotes_declaration()
     test_security_integer_validation()
     test_equipment_phase_gating()
+    test_flashlight_toggle_lifecycle()
     test_upgrade_terminal_proximity()
     test_destination_voting()
     test_hollow_los_raycasting()

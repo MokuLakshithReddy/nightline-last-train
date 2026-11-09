@@ -19,6 +19,16 @@ local activeFlashlightModels: { [number]: Model } = {}
 local lastFlashlightToggleTime: { [number]: number } = {}
 local lastFlareThrowTime: { [number]: number } = {}
 
+local function destroyFlashlightModel(userId: number)
+	local model = activeFlashlightModels[userId]
+	if model then
+		pcall(function()
+			model:Destroy()
+		end)
+		activeFlashlightModels[userId] = nil
+	end
+end
+
 local EquipmentService = {}
 
 function EquipmentService.Init()
@@ -46,6 +56,18 @@ function EquipmentService.Init()
 	throwFlare.OnServerEvent:Connect(function(player: Player, lookVector: any)
 		EquipmentService.ThrowFlare(player, lookVector)
 	end)
+
+	Players.PlayerAdded:Connect(function(player)
+		player.CharacterRemoving:Connect(function()
+			EquipmentService.RemoveFlashlight(player)
+		end)
+	end)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		player.CharacterRemoving:Connect(function()
+			EquipmentService.RemoveFlashlight(player)
+		end)
+	end
 
 	Players.PlayerRemoving:Connect(function(player)
 		EquipmentService.RemoveFlashlight(player)
@@ -81,7 +103,7 @@ function EquipmentService.ToggleFlashlight(player: Player): boolean
 	end
 
 	-- 4. Verify flashlight ownership/equip state before enabling
-	local currentlyOn = flashlightStates[player.UserId] or false
+	local currentlyOn = EquipmentService.IsFlashlightOn(player)
 	local willTurnOn = not currentlyOn
 
 	if willTurnOn then
@@ -89,12 +111,16 @@ function EquipmentService.ToggleFlashlight(player: Player): boolean
 			log:Warn("Player attempted to enable flashlight without owning/equipping it", { Player = player.Name })
 			return false
 		end
+		local attached = EquipmentService.AttachFlashlightModel(player, character)
+		if not attached then
+			flashlightStates[player.UserId] = false
+			log:Warn("Failed to attach flashlight model to player character", { Player = player.Name })
+			return false
+		end
 		flashlightStates[player.UserId] = true
-		EquipmentService.AttachFlashlightModel(player, character)
 		log:Info("Player turned ON flashlight", { Player = player.Name })
 		return true
 	else
-		flashlightStates[player.UserId] = false
 		EquipmentService.RemoveFlashlight(player)
 		log:Info("Player turned OFF flashlight", { Player = player.Name })
 		return false
@@ -102,14 +128,14 @@ function EquipmentService.ToggleFlashlight(player: Player): boolean
 end
 
 function EquipmentService.IsFlashlightOn(player: Player): boolean
-	return flashlightStates[player.UserId] or false
+	return (flashlightStates[player.UserId] == true) and (activeFlashlightModels[player.UserId] ~= nil)
 end
 
-function EquipmentService.AttachFlashlightModel(player: Player, character: Model)
-	EquipmentService.RemoveFlashlight(player)
+function EquipmentService.AttachFlashlightModel(player: Player, character: Model): boolean
+	destroyFlashlightModel(player.UserId)
 
 	local torso = (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or character:FindFirstChild("HumanoidRootPart")) :: BasePart?
-	if not torso then return end
+	if not torso then return false end
 
 	local model = Instance.new("Model")
 	model.Name = "PlayerFlashlight"
@@ -156,14 +182,12 @@ function EquipmentService.AttachFlashlightModel(player: Player, character: Model
 	spotLight.Parent = bulb
 
 	activeFlashlightModels[player.UserId] = model
+	return true
 end
 
 function EquipmentService.RemoveFlashlight(player: Player)
 	flashlightStates[player.UserId] = false
-	if activeFlashlightModels[player.UserId] then
-		activeFlashlightModels[player.UserId]:Destroy()
-		activeFlashlightModels[player.UserId] = nil
-	end
+	destroyFlashlightModel(player.UserId)
 end
 
 function EquipmentService.ThrowFlare(player: Player, direction: any)

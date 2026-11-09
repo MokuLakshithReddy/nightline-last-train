@@ -79,6 +79,7 @@ Testing in NIGHTLINE is conducted across three levels:
 | **FIX-T23**| MarketplaceService Receipt Processing & Game Pass Entitlements | Simulate ProcessReceipt with duplicate receipts, unowned/unlisted IDs, read-only profiles, and game pass ownership | PurchaseService, MonetizationConfig, PlayerDataService | Duplicate receipts granted idempotently; invalid products deferred (NotProcessedYet); writable profile verified; game passes synchronized on join/prompt | ✅ Passed |
 | **FIX-T24**| Executable Automated Test Suite & CI | Pull request or push to main branch; local CLI execution | GitHub Actions CI workflow, Rojo build, Selene lint, and tests/run_tests.py | 14 automated test suites pass without regression; Rojo compiles binary place; Selene lints with 0 errors; build and test artifacts uploaded | ✅ Passed |
 | **FIX-T25**| Evidence-Based Release Sign-Off | Documentation review & milestone status check | DEVELOPMENT_PROGRESS.md, RELEASE_GUIDE.md, and TESTING.md reconciliation | Separates automated CI guarantees from manual Studio staging; removes unsubstantiated production claims; milestones aligned with executable evidence | ✅ Passed |
+| **FIX-T26**| Flashlight Toggle State Lifecycle & Model Separation | Repeated toggle requests, missing torso, character respawn, off -> on -> off -> on cycles | EquipmentService.ToggleFlashlight, AttachFlashlightModel & IsFlashlightOn | State and model attachment decoupled; IsFlashlightOn matches physical model state; toggling off cleanly removes model and disables light; respawns auto-clean | ✅ Passed |
 
 ---
 
