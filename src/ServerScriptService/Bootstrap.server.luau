@@ -21,6 +21,7 @@ local REQUIRED_REMOTES = {
 	"Notification",
 	"RequestEquipment",
 	"RequestDestinationVote",
+	"DestinationVotesUpdated",
 	"RequestPurchaseUpgrade",
 	"ProfileUpdated",
 	"ToggleFlashlight",
@@ -134,7 +135,18 @@ requestDestinationVoteRemote.OnServerEvent:Connect(function(player: Player, stat
 	local valid, str = SecurityService.ValidateString(stationId, 32)
 	if not valid or not str then return end
 
-	log:Info("Player voted for destination", { Player = player.Name, Destination = str })
+	local success, reason = RoundService.RecordDestinationVote(player, str)
+	if not success and reason then
+		local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?
+		if notifRemote then
+			notifRemote:FireClient(player, {
+				MessageKey = "VOTE_REJECTED",
+				MessageText = reason,
+				Severity = "Warning",
+				Duration = 3,
+			})
+		end
+	end
 end)
 
 local requestPurchaseUpgradeRemote = remotesFolder:WaitForChild("RequestPurchaseUpgrade") :: RemoteEvent

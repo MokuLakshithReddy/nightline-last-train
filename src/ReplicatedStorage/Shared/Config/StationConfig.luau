@@ -35,6 +35,22 @@ local Stations: { [string]: StationDefinition } = {
 		AllowedMissions = { "RestorePower", "RecoverCargo", "RepairSignal" },
 		MaxLootNodes = 8,
 	},
+	Station002 = {
+		Id = "Station002",
+		Name = "Sunken Depot",
+		Subtitle = "Submerged Freight Concourse",
+		Description = "A flooded subterranean rail yard with rusted catenary poles and echoing water reservoirs.",
+		Areas = {
+			Platform = { Name = "Freight Platform", Purpose = "Entry & Extraction zone", RiskLevel = "Safe" },
+			Concourse = { Name = "Waterlogged Concourse", Purpose = "Central transit navigation hub", RiskLevel = "Medium" },
+			Maintenance = { Name = "Drainage Pump Vault", Purpose = "Power breaker & pump racks", RiskLevel = "Medium" },
+			ControlRoom = { Name = "Signal Gantry Office", Purpose = "Terminal signaling arrays", RiskLevel = "Medium" },
+			CargoStorage = { Name = "High-Security Depot", Purpose = "Container salvage storage", RiskLevel = "High" },
+			Tunnel = { Name = "Ventilation Incline", Purpose = "High-risk optional exploration route", RiskLevel = "High" },
+		},
+		AllowedMissions = { "RestorePower", "RecoverCargo", "RepairSignal" },
+		MaxLootNodes = 8,
+	},
 }
 
 local StationConfig = {

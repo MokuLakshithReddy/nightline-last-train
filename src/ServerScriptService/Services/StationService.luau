@@ -60,15 +60,18 @@ end
 
 function StationService.LoadStation(stationId: string?): Model
 	local targetId = stationId or StationConfig.DefaultStation
+	local stationDef = StationConfig.Stations[targetId] or StationConfig.Stations[StationConfig.DefaultStation]
 	StationService.UnloadStation()
 
-	log:Info("Constructing Station 001: The Forgotten Terminal...", { StationId = targetId })
+	log:Info("Constructing station level: " .. stationDef.Name, { StationId = targetId })
 
 	local world = Workspace:WaitForChild("World")
 	local runtime = world:WaitForChild("Runtime")
 
 	local station = Instance.new("Model")
 	station.Name = "ActiveStation"
+	station:SetAttribute("StationId", targetId)
+	station:SetAttribute("StationName", stationDef.Name)
 	station.Parent = runtime
 
 	local offset = GameConfig.World.ActiveStationOffset
@@ -396,7 +399,7 @@ function StationService.LoadStation(stationId: string?): Model
 	end
 
 	currentStation = station
-	log:Info("Station 001 architecture assembled with all 6 required zones.")
+	log:Info("Station architecture assembled for " .. stationDef.Name .. " with all 6 required zones.", { StationId = targetId })
 	return station
 end
 
