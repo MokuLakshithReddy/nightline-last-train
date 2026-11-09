@@ -71,6 +71,7 @@ export type PlayerProfile = {
 	Statistics: PlayerStatistics,
 	SessionLock: SessionLock?,
 	LastProcessedRoundId: string?,
+	ProcessedReceipts: { [string]: boolean }?,
 }
 
 export type RoundStatePayload = {
