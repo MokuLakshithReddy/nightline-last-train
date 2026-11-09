@@ -53,7 +53,14 @@ Will you make it back before the last train departs?
 
 ## 3. Evidence-Based Release Verification Protocol
 
-### 3.1 Automated CI Verification (Reproducible in CI via `.github/workflows/ci.yml`)
+### 3.1 Branch Protection & CI Quality Gates
+The repository enforces GitHub branch protection rules on `main` to prevent unvalidated changes from reaching production:
+- **Pull Request Requirement:** Direct pushes to `main` are blocked; all modifications must be proposed through pull requests.
+- **Required Status Checks:** The CI check `Lint, Build & Test` (from `.github/workflows/ci.yml`) is strictly required to pass before merging.
+- **Up-to-Date Branches:** Strict branch protection requires pull request branches to be up to date with `main` before merging.
+- **Stale Review Dismissal:** Automated dismissal of stale reviews upon new commits.
+
+### 3.2 Automated CI Verification (Reproducible in CI via `.github/workflows/ci.yml`)
 The following checks are strictly automated, deterministic, and required to pass before any PR or commit merges:
 - [x] **Project Build Compilation:** `rojo build default.project.json --output Nightline.rbxlx` succeeds without missing dependencies.
 - [x] **Luau Static Analysis:** `selene src/` passes with 0 errors and 0 warnings against the standard library.
@@ -70,7 +77,7 @@ The following checks are strictly automated, deterministic, and required to pass
   - Authoritative analytics telemetry hooks (`FIX-T22`).
   - Developer Product receipt idempotency and game pass catalog (`FIX-T23`).
 
-### 3.2 Manual Studio Staging Checklist (Execute in Roblox Studio Before Public Toggle)
+### 3.3 Manual Studio Staging Checklist (Execute in Roblox Studio Before Public Toggle)
 Before flipping experience privacy from *Private* to *Public* on the Creator Dashboard, the release coordinator must execute this manual session in Roblox Studio (Test > Local Server):
 
 - [ ] **Solo Playthrough:**

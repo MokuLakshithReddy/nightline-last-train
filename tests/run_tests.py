@@ -1094,6 +1094,26 @@ def test_synchronized_server_clock():
     assert broken_remaining > 1000000, "Proof that legacy os.clock caused extreme clock desync"
 
 
+@test_case("CI workflow contracts and branch protection requirements (FIX-T35)")
+def test_ci_workflow_contracts():
+    with open(".github/workflows/ci.yml", "r", encoding="utf-8") as f:
+        ci_content = f.read()
+
+    # Workflow contract assertions
+    assert "branches: [ main ]" in ci_content, "CI must trigger on main branch"
+    assert "pull_request:" in ci_content, "CI must trigger on pull_request"
+    assert "name: Lint, Build & Test" in ci_content, "Job must declare 'name: Lint, Build & Test' to match required check name"
+    assert "selene src/" in ci_content, "CI must execute selene linter"
+    assert "rojo build default.project.json --output Nightline.rbxlx" in ci_content, "CI must compile Rojo project"
+    assert "python tests/run_tests.py" in ci_content, "CI must run python regression tests"
+
+    # Documentation contract assertions
+    with open("docs/RELEASE_GUIDE.md", "r", encoding="utf-8") as f:
+        release_content = f.read()
+    assert "Lint, Build & Test" in release_content, "RELEASE_GUIDE.md must specify 'Lint, Build & Test' as required check"
+    assert "Branch Protection & CI Quality Gates" in release_content, "RELEASE_GUIDE.md must describe branch protection"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1126,6 +1146,7 @@ def main():
     test_concurrent_receipt_guard()
     test_datastore_fail_closed_mode()
     test_synchronized_server_clock()
+    test_ci_workflow_contracts()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")
