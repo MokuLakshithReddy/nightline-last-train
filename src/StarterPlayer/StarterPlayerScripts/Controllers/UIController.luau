@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local GameTypes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"):WaitForChild("GameTypes"))
@@ -165,6 +166,17 @@ function UIController.Init()
 	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, player: Player)
 		if player == localPlayer and prompt.Name == "OpenUpgradeTerminalPrompt" then
 			UIController.ToggleUpgradeShop(true)
+		end
+	end)
+
+	-- Gamepad (ButtonB) and Keyboard (Escape) modal dismissal navigation
+	UserInputService.InputBegan:Connect(function(input: InputObject, _gameProcessed: boolean)
+		if input.KeyCode == Enum.KeyCode.ButtonB or input.KeyCode == Enum.KeyCode.Escape then
+			if upgradeShopFrame and upgradeShopFrame.Visible then
+				UIController.ToggleUpgradeShop(false)
+			elseif destinationVoteFrame and destinationVoteFrame.Visible then
+				UIController.ToggleDestinationVoting(false)
+			end
 		end
 	end)
 
@@ -491,6 +503,8 @@ function UIController.BuildUpgradeShop()
 	closeBtn.Text = "X"
 	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	closeBtn.TextSize = 14
+	closeBtn.Active = true
+	closeBtn.Selectable = true
 	closeBtn.ZIndex = 22
 	closeBtn.Parent = upgradeShopFrame
 	closeBtn.MouseButton1Click:Connect(function()
@@ -606,6 +620,8 @@ function UIController.BuildUpgradeShop()
 			buyBtn.Text = "PURCHASE"
 			buyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 			buyBtn.TextSize = 12
+			buyBtn.Active = true
+			buyBtn.Selectable = true
 			buyBtn.ZIndex = 24
 			buyBtn.Parent = card
 

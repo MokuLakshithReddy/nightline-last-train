@@ -94,26 +94,26 @@ function InputController.Init()
 	-- Sprint: Shift (Keyboard), L3 (Controller), On-screen touch button (Mobile)
 	ContextActionService:BindAction("SprintAction", handleSprintAction, true, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonL3)
 	ContextActionService:SetTitle("SprintAction", "Sprint")
-	ContextActionService:SetPosition("SprintAction", UDim2.new(1, -110, 1, -170))
+	ContextActionService:SetPosition("SprintAction", UDim2.new(1, -95, 1, -165))
 
 	-- Equipment: 1 / 2 (Keyboard), DPad Left / Right (Controller), Touch buttons
 	ContextActionService:BindAction("EquipSlot1", handleSlotAction, true, Enum.KeyCode.One, Enum.KeyCode.DPadLeft)
 	ContextActionService:SetTitle("EquipSlot1", "[1] Flashlight")
-	ContextActionService:SetPosition("EquipSlot1", UDim2.new(1, -170, 1, -100))
+	ContextActionService:SetPosition("EquipSlot1", UDim2.new(1, -225, 1, -90))
 
 	ContextActionService:BindAction("EquipSlot2", handleSlotAction, true, Enum.KeyCode.Two, Enum.KeyCode.DPadRight)
 	ContextActionService:SetTitle("EquipSlot2", "[2] Flare")
-	ContextActionService:SetPosition("EquipSlot2", UDim2.new(1, -100, 1, -100))
+	ContextActionService:SetPosition("EquipSlot2", UDim2.new(1, -155, 1, -90))
 
 	-- Flashlight Toggle: F (Keyboard), ButtonY (Controller), Mobile touch button
 	ContextActionService:BindAction("ToggleFlashlight", handleFlashlightAction, true, Enum.KeyCode.F, Enum.KeyCode.ButtonY)
 	ContextActionService:SetTitle("ToggleFlashlight", "[F] Light")
-	ContextActionService:SetPosition("ToggleFlashlight", UDim2.new(1, -240, 1, -100))
+	ContextActionService:SetPosition("ToggleFlashlight", UDim2.new(1, -85, 1, -90))
 
 	-- Throw Flare: G (Keyboard), ButtonB (Controller), Mobile touch button
 	ContextActionService:BindAction("ThrowFlare", handleThrowFlareAction, true, Enum.KeyCode.G, Enum.KeyCode.ButtonB)
 	ContextActionService:SetTitle("ThrowFlare", "[G] Flare")
-	ContextActionService:SetPosition("ThrowFlare", UDim2.new(1, -310, 1, -100))
+	ContextActionService:SetPosition("ThrowFlare", UDim2.new(1, -165, 1, -165))
 
 	localPlayer.CharacterAdded:Connect(function(character)
 		local humanoid = character:WaitForChild("Humanoid") :: Humanoid
