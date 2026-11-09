@@ -1166,6 +1166,47 @@ def test_datastore_live_evidence_integrity():
     assert "[x] **Duplicate Callback Idempotency" in release_content, "RELEASE_GUIDE.md must mark Duplicate Callback Idempotency complete"
 
 
+@test_case("Mobile, gamepad & presentation QA integrity (FIX-T38)")
+def test_mobile_gamepad_qa_integrity():
+    with open("docs/MOBILE_GAMEPAD_QA_EVIDENCE.md", "r", encoding="utf-8") as f:
+        qa_content = f.read()
+
+    with open("docs/RELEASE_GUIDE.md", "r", encoding="utf-8") as f:
+        release_content = f.read()
+
+    with open("src/StarterPlayer/StarterPlayerScripts/Controllers/InputController.luau", "r", encoding="utf-8") as f:
+        input_content = f.read()
+
+    with open("src/StarterPlayer/StarterPlayerScripts/Controllers/UIController.luau", "r", encoding="utf-8") as f:
+        ui_content = f.read()
+
+    # Evidence validations
+    assert "iPhone 14" in qa_content, "MOBILE_GAMEPAD_QA_EVIDENCE.md must specify iPhone 14 profile"
+    assert "844 x 390" in qa_content, "Must specify viewport resolution"
+    for btn in ["ButtonL3", "ButtonY", "ButtonB", "DPadLeft", "DPadRight"]:
+        assert btn in qa_content, f"Must document gamepad button {btn}"
+
+    for scenario_id in ["QA-01", "QA-02", "QA-03", "QA-04", "QA-05", "QA-06", "QA-07"]:
+        assert scenario_id in qa_content, f"Must document scenario {scenario_id}"
+
+    assert "PASSED & SIGNED OFF" in qa_content, "Must declare verified sign-off"
+
+    # InputController code validation
+    assert "ButtonL3" in input_content, "InputController must bind Sprint to ButtonL3"
+    assert "ButtonY" in input_content, "InputController must bind Light toggle to ButtonY"
+    assert "ButtonB" in input_content, "InputController must bind Throw flare to ButtonB"
+    assert "DPadLeft" in input_content, "InputController must bind Slot 1 to DPadLeft"
+    assert "DPadRight" in input_content, "InputController must bind Slot 2 to DPadRight"
+
+    # UIController gamepad modal dismissal validation
+    assert "Enum.KeyCode.ButtonB" in ui_content, "UIController must handle ButtonB modal dismissal"
+    assert "buyBtn.Selectable = true" in ui_content, "UIController must make buyBtn gamepad selectable"
+
+    # Release guide alignment
+    assert "docs/MOBILE_GAMEPAD_QA_EVIDENCE.md" in release_content, "RELEASE_GUIDE.md must link to mobile/gamepad QA evidence"
+    assert "[x] **Mobile & Gamepad Emulation" in release_content, "RELEASE_GUIDE.md must mark Mobile & Gamepad Emulation complete"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1201,6 +1242,7 @@ def main():
     test_ci_workflow_contracts()
     test_staging_evidence_integrity()
     test_datastore_live_evidence_integrity()
+    test_mobile_gamepad_qa_integrity()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

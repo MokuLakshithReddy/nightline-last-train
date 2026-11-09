@@ -93,9 +93,10 @@ Before flipping experience privacy from *Private* to *Public* on the Creator Das
   - Have one player sprint near The Hollow; verify creature enters INVESTIGATE / CHASE. Have player break line-of-sight behind cover; verify creature loses target and 0.4s windup does not clip behind cover.
   - Disconnect one player mid-exploration; verify active roster updates without halting the round loop.
   - Disconnect all active players; verify immediate safe abort to RESULTS and station unloading.
-- [ ] **Mobile & Gamepad Emulation (Pending Issue #51):**
-  - In Roblox Studio Device Emulator, select iPhone 14 and verify Sprint button and equipment buttons are accessible.
-  - Connect a gamepad; verify ProximityPrompts display gamepad button prompts (`[X]`/`[A]`).
+- [x] **Mobile & Gamepad Emulation (Verified in `QA-01` through `QA-07`):**
+  - In Roblox Studio Device Emulator, select iPhone 14 profile; verify Sprint, equipment, flashlight toggle, flare throw, and modal scrolling are accessible without overlapping default jump controls.
+  - Connect a gamepad; verify end-to-end thumbstick navigation, contextual ProximityPrompt button glyphs (`[X]`/`[A]`), D-Pad modal selection, and `ButtonB` modal dismissal.
+  - Detailed multi-platform QA matrix and presentation evidence recorded in [`docs/MOBILE_GAMEPAD_QA_EVIDENCE.md`](./MOBILE_GAMEPAD_QA_EVIDENCE.md).
 
 ### 3.4 Private Live Experience Staging: DataStores & Monetization
 Verified in a private published experience with live Roblox Cloud DataStore API access enabled. Complete execution evidence and transaction logs are recorded in [`docs/DATASTORE_LIVE_TEST_EVIDENCE.md`](./DATASTORE_LIVE_TEST_EVIDENCE.md):
