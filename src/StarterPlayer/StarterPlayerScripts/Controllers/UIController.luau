@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local GameTypes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"):WaitForChild("GameTypes"))
 local RewardConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("RewardConfig"))
@@ -55,6 +56,14 @@ local function formatTime(seconds: number): string
 	return string.format("%02d:%02d", mins, secs)
 end
 
+function UIController.CalculateTimeRemaining(phaseEndsAt: number, currentTime: number?): number
+	if phaseEndsAt <= 0 then
+		return 0
+	end
+	local now = currentTime or Workspace:GetServerTimeNow()
+	return math.max(0, phaseEndsAt - now)
+end
+
 function UIController.Init()
 	log:Info("Initializing responsive HUD and Upgrade Shop...")
 	UIController.BuildHUD()
@@ -71,6 +80,14 @@ function UIController.Init()
 
 	roundStateRemote.OnClientEvent:Connect(function(state: string, _serverTime: number, phaseEndsAt: number, _stationId: string)
 		currentPhaseEndsAt = phaseEndsAt
+		if timerLabel then
+			if currentPhaseEndsAt > 0 then
+				local remaining = UIController.CalculateTimeRemaining(currentPhaseEndsAt)
+				timerLabel.Text = formatTime(remaining)
+			else
+				timerLabel.Text = "--:--"
+			end
+		end
 		if stateLabel then
 			stateLabel.Text = string.upper(state)
 			if state == "EXPLORATION" then
@@ -154,9 +171,13 @@ function UIController.Init()
 	-- Timer update loop
 	task.spawn(function()
 		while true do
-			if timerLabel and currentPhaseEndsAt > 0 then
-				local remaining = currentPhaseEndsAt - os.clock()
-				timerLabel.Text = formatTime(remaining)
+			if timerLabel then
+				if currentPhaseEndsAt > 0 then
+					local remaining = UIController.CalculateTimeRemaining(currentPhaseEndsAt)
+					timerLabel.Text = formatTime(remaining)
+				else
+					timerLabel.Text = "--:--"
+				end
 			end
 			task.wait(0.25)
 		end

@@ -59,7 +59,8 @@ local function broadcastNotification(message: string, severity: "Info" | "Warnin
 end
 
 local function broadcastState()
-	local duration = math.max(0, math.floor(phaseEndsAt - os.clock()))
+	local now = Workspace:GetServerTimeNow()
+	local duration = if phaseEndsAt > 0 then math.max(0, math.floor(phaseEndsAt - now)) else 0
 	log:Info("State transition", {
 		State = currentState,
 		EndsAt = math.floor(phaseEndsAt),
@@ -69,7 +70,7 @@ local function broadcastState()
 	if roundStateRemote then
 		roundStateRemote:FireAllClients(
 			currentState,
-			os.clock(),
+			now,
 			phaseEndsAt,
 			currentStationId
 		)
@@ -113,7 +114,7 @@ function RoundService.Init()
 
 	Players.PlayerAdded:Connect(function(player)
 		if roundStateRemote then
-			roundStateRemote:FireClient(player, currentState, os.clock(), phaseEndsAt, currentStationId)
+			roundStateRemote:FireClient(player, currentState, Workspace:GetServerTimeNow(), phaseEndsAt, currentStationId)
 		end
 
 		if destinationVotesRemote then
@@ -287,7 +288,14 @@ function RoundService.GetCurrentState(): GameTypes.RoundState
 end
 
 function RoundService.GetTimeRemaining(): number
-	return math.max(0, math.floor(phaseEndsAt - os.clock()))
+	if phaseEndsAt <= 0 then
+		return 0
+	end
+	return math.max(0, math.floor(phaseEndsAt - Workspace:GetServerTimeNow()))
+end
+
+function RoundService.GetPhaseEndsAt(): number
+	return phaseEndsAt
 end
 
 function RoundService.GetActiveRoster(): { [number]: Player }
@@ -466,7 +474,7 @@ function RoundService.WaitForPhase(expectedPhase: GameTypes.RoundState?): boolea
 	local targetPhase = expectedPhase or currentState
 	local targetGen = stateGeneration
 
-	while os.clock() < phaseEndsAt do
+	while Workspace:GetServerTimeNow() < phaseEndsAt do
 		if currentState ~= targetPhase or stateGeneration ~= targetGen then
 			log:Info("Phase wait interrupted: state changed from " .. tostring(targetPhase) .. " to " .. tostring(currentState))
 			return false
@@ -486,8 +494,12 @@ end
 function RoundService.TransitionTo(newState: GameTypes.RoundState)
 	stateGeneration += 1
 	currentState = newState
-	local duration = GameConfig.Round.Durations[newState] or 10
-	phaseEndsAt = os.clock() + duration
+	local duration = GameConfig.Round.Durations[newState]
+	if newState == "WAITING" or not duration then
+		phaseEndsAt = 0
+	else
+		phaseEndsAt = Workspace:GetServerTimeNow() + duration
+	end
 
 	if newState == "WAITING" then
 		broadcastNotification("Waiting for players to board the train...", "Info")
