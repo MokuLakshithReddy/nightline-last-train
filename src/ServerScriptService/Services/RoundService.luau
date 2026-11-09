@@ -101,20 +101,13 @@ function RoundService.Init()
 	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
 
 	Players.PlayerAdded:Connect(function(player)
-		-- Send current state to newly joined player
 		if roundStateRemote then
 			roundStateRemote:FireClient(player, currentState, os.clock(), phaseEndsAt, currentStationId)
 		end
 
 		player.CharacterAdded:Connect(function()
 			task.wait(0.2)
-			if currentState == "WAITING" or currentState == "INTERMISSION" or currentState == "BOARDING" then
-				teleportToHub(player)
-			else
-				-- Mid-round joiner stays in safe hub
-				teleportToHub(player)
-				log:Info("Player joined mid-round; spawned in Hub as spectator", { Name = player.Name })
-			end
+			teleportToHub(player)
 		end)
 	end)
 
@@ -123,7 +116,6 @@ function RoundService.Init()
 		extractedPlayers[player.UserId] = nil
 		eliminatedPlayers[player.UserId] = nil
 
-		-- If active expedition loses all players, abort
 		if (currentState == "EXPLORATION" or currentState == "EXTRACTION") and next(activeRoster) == nil then
 			log:Warn("All active expedition players left; aborting round safely")
 			RoundService.TransitionTo("RESULTS")
@@ -173,7 +165,6 @@ function RoundService.StartGameLoop()
 
 			elseif currentState == "BOARDING" then
 				RoundService.WaitForPhase()
-				-- Lock active roster
 				table.clear(activeRoster)
 				table.clear(extractedPlayers)
 				table.clear(eliminatedPlayers)
@@ -238,19 +229,28 @@ function RoundService.TransitionTo(newState: GameTypes.RoundState)
 		broadcastNotification("Train departing from terminal! In transit to Station 001...", "Alert")
 
 	elseif newState == "EXPLORATION" then
-		-- Load station and spawn active roster
+		-- 1. Load Station 001 level geometry
 		StationService.LoadStation(currentStationId)
-		ObjectiveService.StartMission("RestorePower")
+
+		-- 2. Select mission template from the 3 templates
+		local missions: { GameTypes.MissionType } = { "RestorePower", "RecoverCargo", "RepairSignal" }
+		local missionIndex = ((roundCounter - 1) % #missions) + 1
+		local selectedMission = missions[missionIndex]
+		local activeMission = ObjectiveService.StartMission(selectedMission)
+
+		-- 3. Standby monster
 		MonsterService.SpawnMonster()
 
+		-- 4. Deploy players to station arrival platform
 		local spawnPos = StationService.GetSpawnPosition()
 		for _, player in pairs(activeRoster) do
 			teleportPlayer(player, spawnPos)
 		end
-		broadcastNotification("Arrived at The Forgotten Terminal! Objective active.", "Warning")
+
+		broadcastNotification(string.format("Arrived at The Forgotten Terminal! Objective: %s", activeMission.Title), "Warning")
 
 	elseif newState == "EXTRACTION" then
-		broadcastNotification("WARNING: Last train departure in 60s! Proceed to platform!", "Alert")
+		broadcastNotification("WARNING: Last train departure in 60s! Get to the extraction gate!", "Alert")
 
 	elseif newState == "RETURN" then
 		MonsterService.DespawnMonster()
@@ -262,7 +262,6 @@ function RoundService.TransitionTo(newState: GameTypes.RoundState)
 					extractedPlayers[userId] = true
 				end
 			end
-			-- Teleport back to Hub carriage
 			teleportToHub(player)
 		end
 		broadcastNotification("Train departing station! Returning to safe haven...", "Success")
@@ -299,4 +298,3 @@ function RoundService.CleanupRound()
 end
 
 return RoundService
-

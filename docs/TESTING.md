@@ -9,7 +9,7 @@ Testing in NIGHTLINE is conducted across three levels:
 
 ---
 
-## Milestone 0 & 1 Test Cases
+## Test Cases & Verification Log
 
 | Test ID | System / Target | Precondition | Test Execution | Expected Result | Result |
 |---|---|---|---|---|---|
@@ -22,3 +22,10 @@ Testing in NIGHTLINE is conducted across three levels:
 | **M1-T4** | Roster Locking | Round in `BOARDING` | Player joins mid-phase | Existing player roster locked; late joiner stays in Hub spectator mode | ✅ Passed |
 | **M1-T5** | State Cleanup | Round completes / ends early | Round finishes `RESULTS` or aborts | All runtime station models removed; server state resets cleanly | ✅ Passed |
 | **M1-T6** | UI & Countdown | Client connected | Server broadcasts `RoundStateChanged` | HUD displays accurate state name, formatted timer, and broadcast notification | ✅ Passed |
+| **M2-T1** | Station 001 Zones | Round enters `EXPLORATION` | StationService generates station | All 6 zones created: Platform, Concourse, Maintenance, ControlRoom, CargoStorage, UndergroundTunnel | ✅ Passed |
+| **M2-T2** | Restore Power | `RestorePower` active | Collect 3 fuses & install in sockets | Breaker lights switch red to green, progress 3/3, mission completed | ✅ Passed |
+| **M2-T3** | Recover Cargo | `RecoverCargo` active | Pick up 2 crates & deliver to platform | Crates weld to back, platform pallet stores crates, progress 2/2 | ✅ Passed |
+| **M2-T4** | Repair Signal | `RepairSignal` active | Reboot 3 communication terminals | Terminal screens switch red offline to green online, progress 3/3 | ✅ Passed |
+| **M2-T5** | Scrap Caches | Round in `EXPLORATION` | Scavenge optional caches | Server awards +15 to +25 Scrap directly to player profile | ✅ Passed |
+| **M2-T6** | Extraction Zone | Round enters `RETURN` | Check character position | Players inside extraction volume receive +50 Scrap extraction bonus | ✅ Passed |
+| **M2-T7** | Runtime Cleanup | Round enters `RESULTS`/`WAITING` | StationService.UnloadStation() | All active station parts, prompts, and dropped crates destroyed | ✅ Passed |

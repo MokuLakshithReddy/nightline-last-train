@@ -2,8 +2,11 @@
 
 ## Status Summary
 
-- **Current Milestone:** Milestone 0 & Milestone 1 (In Progress)
-- **Active Focus:** Environment reconnaissance, Rojo/Luau project tooling, Shared configuration, Hub construction, and Round state machine foundation.
+- **Current Milestone:** Milestone 3 — The Hollow & Survival (Active)
+- **Completed Milestones:**
+  - Milestone 0: Environment, Tooling & Foundation
+  - Milestone 1: Train Hub & Round Foundation
+  - Milestone 2: Station 001 (The Forgotten Terminal) & All 3 Mission Templates
 
 ---
 
@@ -13,8 +16,8 @@
 |---|---|---|---|
 | **Milestone 0** | Environment, Rojo setup, tooling, types, shared configs, signal utils | 🟢 Complete | Rojo build, Selene pass, project files verified |
 | **Milestone 1** | Train Hub, player spawning, Round state machine, departure & cleanup | 🟢 Complete | HubBuilder verified, Round FSM complete, UIController synced |
-| **Milestone 2** | Station 001, objective templates, loot spawns, extraction platform | ⚪ Next | Full round completion with 3 mission templates |
-| **Milestone 3** | The Hollow AI, noise events, perception, chase, fair attack rules | ⚪ Pending | Monster FSM, solo evasion balance, pathfinding recovery |
+| **Milestone 2** | Station 001, objective templates, loot spawns, extraction platform | 🟢 Complete | 6 required areas, RestorePower, RecoverCargo, RepairSignal, Scrap caches |
+| **Milestone 3** | The Hollow AI, noise events, perception, chase, fair attack rules | 🟡 Active | Monster FSM, solo evasion balance, pathfinding recovery |
 | **Milestone 4** | RewardService, PlayerDataService, Scrap upgrades, persistence | ⚪ Pending | DataStore retry/migration tests, upgrade unlock cycle |
 | **Milestone 5** | Mobile controls, responsive UI polish, audio & visual immersion | ⚪ Pending | Touchscreen compatibility, gamepad mapping, performance |
 | **Milestone 6** | Multiplayer stress testing, security validation, exploit hardening | ⚪ Pending | 6-player simulation, remote abuse tests, memory stability |
