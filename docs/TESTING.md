@@ -77,3 +77,33 @@ Testing in NIGHTLINE is conducted across three levels:
 | **FIX-T21**| Contextual ProximityPrompt Presentation | ProximityPrompt shown/hidden/held/triggered under Keyboard, Gamepad, and Touch | InteractionController custom billboard & input styling | Custom stylized HUD prompts rendered with dynamic key badge ([E]/[X]/[TAP]), smooth hold progress animation, trigger pulse feedback, and error flash; server authority strictly retained | ✅ Passed |
 | **FIX-T22**| Gameplay Telemetry & Roblox Analytics Pipeline | Session start, expedition begin/finish, objective progress, extraction, death, and upgrade purchase | AnalyticsService, PlayerDataService, RoundService, ObjectiveService, MonsterService | Validates attribute hygiene (non-PII, bounds, count limits); fires custom and economy telemetry without throwing; events recorded in ring buffer | ✅ Passed |
 | **FIX-T23**| MarketplaceService Receipt Processing & Game Pass Entitlements | Simulate ProcessReceipt with duplicate receipts, unowned/unlisted IDs, read-only profiles, and game pass ownership | PurchaseService, MonetizationConfig, PlayerDataService | Duplicate receipts granted idempotently; invalid products deferred (NotProcessedYet); writable profile verified; game passes synchronized on join/prompt | ✅ Passed |
+| **FIX-T24**| Executable Automated Test Suite & CI | Pull request or push to main branch; local CLI execution | GitHub Actions CI workflow, Rojo build, Selene lint, and tests/run_tests.py | 14 automated test suites pass without regression; Rojo compiles binary place; Selene lints with 0 errors; build and test artifacts uploaded | ✅ Passed |
+
+---
+
+## Automated vs. Manual Verification Boundary
+
+To ensure evidence-based quality without unsubstantiated claims, NIGHTLINE distinguishes between reproducible automated CI verification and manual Studio physical testing:
+
+### 1. Fully Automated Checks (Reproducible in CI via `.github/workflows/ci.yml`)
+- **Linter & Static Typing:** `selene src/` validates all Luau source files against the Roblox standard library (0 errors, 0 warnings).
+- **Rojo Compilation:** `rojo build default.project.json --output Nightline.rbxlx` compiles the full DataModel hierarchy into a valid binary Roblox place file.
+- **Automated Regression Suite (`tests/run_tests.py`):**
+  - Project configuration & remote contract declarations.
+  - Integer equipment slot bounds, NaN, float, and string rejection (`FIX-T13`).
+  - Hub-phase gating, living humanoid checks, and equipment loadout rules (`FIX-T14`).
+  - Terminal distance validation (`FIX-T18`).
+  - Destination vote tallying, duplicate-vote prevention, and deterministic tie-breaking (`FIX-T19`).
+  - Hollow monster model exclusion in raycast filters and 0.4s windup LOS recheck (`FIX-T12`).
+  - State generation counters and cancellation of stale phase waits (`FIX-T16`).
+  - Profile reconciliation, cosmetic restoration, and read-only session lock protection (`FIX-T15`).
+  - Weak-table instance-keyed ProximityPrompt cooldown registry (`FIX-T10`).
+  - CameraController travel/return transitions and fail-safe Custom camera restoration (`FIX-T20`).
+  - Contextual ProximityPrompt input adapters for Keyboard, Gamepad, and Touch (`FIX-T21`).
+  - Analytics telemetry schema sanitation and funnel call sites (`FIX-T22`).
+  - MarketplaceService developer product idempotency and game pass catalog integrity (`FIX-T23`).
+
+### 2. Manual Roblox Studio Testing (Required Prior to Major Public Release)
+- **Multi-Client Local Server (2-6 Players):** Validates network latency, physical carriage crowding, and rubberbanding feel under simulated packet drops.
+- **Physical Gamepad & Mobile Touch Devices:** Validates on-screen touch button layouts, thumbstick deadzones, and vibration triggers on real mobile/console hardware.
+- **Lighting & Atmospheric Fog:** Subjective tuning of volumetric fog density and lantern warm-glow falloffs in live Studio viewport.

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-build:
+    name: Lint, Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Tooling (Rojo & Selene)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+          # Install Rojo 7.4.4
+          curl -sL https://github.com/rojo-rbx/rojo/releases/download/v7.4.4/rojo-7.4.4-linux-x86_64.zip -o /tmp/rojo.zip
+          unzip -q /tmp/rojo.zip -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/rojo"
+
+          # Install Selene 0.32.0
+          curl -sL https://github.com/Kampfkarren/selene/releases/download/0.32.0/selene-0.32.0-linux.zip -o /tmp/selene.zip
+          unzip -q /tmp/selene.zip -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/selene"
+
+      - name: Verify Tool Versions
+        run: |
+          rojo --version
+          selene --version
+
+      - name: Lint Luau Source (Selene)
+        run: selene src/
+
+      - name: Build Rojo Place
+        run: rojo build default.project.json --output Nightline.rbxlx
+
+      - name: Run Executable Test Suite
+        run: python tests/run_tests.py
+
+      - name: Upload Build and Test Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nightline-CI-Artifacts
+          path: |
+            Nightline.rbxlx
+            test_results.json

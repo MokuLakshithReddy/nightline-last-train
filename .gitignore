@@ -13,3 +13,6 @@ bin/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Test outputs
+test_results.json
