@@ -26,6 +26,7 @@ local phaseEndsAt: number = 0
 local roundCounter: number = 0
 local currentRoundId: string = ""
 local currentStationId: string = GameConfig.Round.DefaultStationId
+local stateGeneration: number = 0
 
 -- Crew roster for active expedition
 local activeRoster: { [number]: Player } = {}
@@ -157,7 +158,7 @@ function RoundService.StartGameLoop()
 					end
 
 				elseif currentState == "INTERMISSION" then
-					RoundService.WaitForPhase()
+					if not RoundService.WaitForPhase("INTERMISSION") then return end
 					if #Players:GetPlayers() >= GameConfig.Server.MinPlayersToStart then
 						RoundService.TransitionTo("BOARDING")
 					else
@@ -165,7 +166,7 @@ function RoundService.StartGameLoop()
 					end
 
 				elseif currentState == "BOARDING" then
-					RoundService.WaitForPhase()
+					if not RoundService.WaitForPhase("BOARDING") then return end
 					table.clear(activeRoster)
 					table.clear(extractedPlayers)
 					table.clear(eliminatedPlayers)
@@ -180,7 +181,7 @@ function RoundService.StartGameLoop()
 					end
 
 				elseif currentState == "TRAVEL" then
-					RoundService.WaitForPhase()
+					if not RoundService.WaitForPhase("TRAVEL") then return end
 					RoundService.TransitionTo("EXPLORATION")
 
 				elseif currentState == "EXPLORATION" then
@@ -219,11 +220,11 @@ function RoundService.StartGameLoop()
 
 					local missionTitle = if activeMission and activeMission.Title then activeMission.Title else "Expedition Active"
 					broadcastNotification(string.format("Arrived at The Forgotten Terminal! Objective: %s", missionTitle), "Warning")
-					RoundService.WaitForPhase()
+					if not RoundService.WaitForPhase("EXPLORATION") then return end
 					RoundService.TransitionTo("EXTRACTION")
 
 				elseif currentState == "EXTRACTION" then
-					RoundService.WaitForPhase()
+					if not RoundService.WaitForPhase("EXTRACTION") then return end
 					RoundService.TransitionTo("RETURN")
 
 				elseif currentState == "RETURN" then
@@ -246,7 +247,7 @@ function RoundService.StartGameLoop()
 						end)
 					end
 					broadcastNotification("Train departing station! Returning to safe haven...", "Success")
-					RoundService.WaitForPhase()
+					if not RoundService.WaitForPhase("RETURN") then return end
 					RoundService.TransitionTo("RESULTS")
 
 				elseif currentState == "RESULTS" then
@@ -276,7 +277,7 @@ function RoundService.StartGameLoop()
 						broadcastNotification("EXPEDITION OVER: Returning to Hub.", "Info")
 					end
 
-					RoundService.WaitForPhase()
+					if not RoundService.WaitForPhase("RESULTS") then return end
 					RoundService.CleanupRound()
 					RoundService.TransitionTo("WAITING")
 				end
@@ -290,13 +291,29 @@ function RoundService.StartGameLoop()
 	end)
 end
 
-function RoundService.WaitForPhase()
+function RoundService.WaitForPhase(expectedPhase: GameTypes.RoundState?): boolean
+	local targetPhase = expectedPhase or currentState
+	local targetGen = stateGeneration
+
 	while os.clock() < phaseEndsAt do
-		task.wait(0.5)
+		if currentState ~= targetPhase or stateGeneration ~= targetGen then
+			log:Info("Phase wait interrupted: state changed from " .. tostring(targetPhase) .. " to " .. tostring(currentState))
+			return false
+		end
+		task.wait(0.2)
 	end
+
+	-- Final validation after wait interval expires
+	if currentState ~= targetPhase or stateGeneration ~= targetGen then
+		log:Info("Phase wait completed but state was superseded", { Expected = targetPhase, Actual = currentState })
+		return false
+	end
+
+	return true
 end
 
 function RoundService.TransitionTo(newState: GameTypes.RoundState)
+	stateGeneration += 1
 	currentState = newState
 	local duration = GameConfig.Round.Durations[newState] or 10
 	phaseEndsAt = os.clock() + duration
