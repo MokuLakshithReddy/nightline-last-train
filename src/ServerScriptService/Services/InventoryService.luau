@@ -82,6 +82,11 @@ function InventoryService.ValidateItemEligibility(player: Player, itemId: string
 end
 
 function InventoryService.SetSlotItem(player: Player, slot: number, itemId: string?): (boolean, string?)
+	-- 1. Complete all slot validation before deducting Scrap or changing inventory
+	if typeof(slot) ~= "number" or slot ~= slot or slot == math.huge or slot == -math.huge or math.floor(slot) ~= slot or (slot ~= 1 and slot ~= 2) then
+		return false, "Invalid slot index: must be integer 1 or 2"
+	end
+
 	local inv = inventories[player.UserId]
 	if not inv then return false, "No inventory found" end
 

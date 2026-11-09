@@ -97,5 +97,15 @@ function SecurityService.ValidateNumber(value: any, min: number?, max: number?):
 	return true, value
 end
 
+-- Validates finite, non-NaN integer numbers within bounds
+function SecurityService.ValidateInteger(value: any, min: number?, max: number?): (boolean, number?)
+	local valid, num = SecurityService.ValidateNumber(value, min, max)
+	if not valid or not num then return false, nil end
+	if math.floor(num) ~= num then
+		return false, nil
+	end
+	return true, num
+end
+
 return SecurityService
 
