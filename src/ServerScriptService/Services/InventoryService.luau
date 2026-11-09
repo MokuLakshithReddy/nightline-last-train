@@ -1,6 +1,6 @@
 --!strict
 -- InventoryService.luau
--- Authoritative equipment slots, mission item tracking, and ownership validation
+-- Authoritative equipment slots, mission item tracking, and verified ownership/consumable deductions
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,7 +16,7 @@ local inventoryUpdatedRemote: RemoteEvent? = nil
 local InventoryService = {}
 
 function InventoryService.Init()
-	log:Info("Initializing InventoryService with ownership checks...")
+	log:Info("Initializing InventoryService with authoritative ownership checks...")
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	inventoryUpdatedRemote = remotes:WaitForChild("InventoryUpdated") :: RemoteEvent
 
@@ -47,7 +47,7 @@ function InventoryService.GetInventory(player: Player): GameTypes.PlayerInventor
 	return inventories[player.UserId]
 end
 
--- Validates whether a player owns or is eligible to equip an item (Problem 3)
+-- Validates whether a player owns or is eligible to equip an item
 function InventoryService.ValidateItemEligibility(player: Player, itemId: string): (boolean, string?)
 	local itemDef = ItemConfig.Items[itemId]
 	if not itemDef then
@@ -64,7 +64,7 @@ function InventoryService.ValidateItemEligibility(player: Player, itemId: string
 		return false, "Mission items are tracked automatically"
 	end
 
-	-- Upgraded/Consumable items require PlayerData check (e.g. Flare requires Workbench Locker)
+	-- Upgraded/Consumable items require PlayerData check
 	local PlayerDataService = require(script.Parent:WaitForChild("PlayerDataService"))
 	local profile = PlayerDataService.GetProfile(player)
 	if not profile then
@@ -73,7 +73,7 @@ function InventoryService.ValidateItemEligibility(player: Player, itemId: string
 
 	if itemId == "Flare" then
 		if not profile.TrainUpgrades["WorkbenchLocker"] and profile.Scrap < 10 then
-			return false, "Requires Equipment Locker train upgrade or Scrap"
+			return false, "Requires Equipment Locker train upgrade or 10 Scrap to purchase"
 		end
 		return true, nil
 	end
@@ -101,6 +101,21 @@ function InventoryService.SetSlotItem(player: Player, slot: number, itemId: stri
 		return false, reason
 	end
 
+	local PlayerDataService = require(script.Parent:WaitForChild("PlayerDataService"))
+	local profile = PlayerDataService.GetProfile(player)
+
+	-- If equipping a consumable Flare without the permanent WorkbenchLocker upgrade, deduct Scrap
+	if itemId == "Flare" and profile and not profile.TrainUpgrades["WorkbenchLocker"] then
+		local currentSlotItem = (slot == 1 and inv.Slot1) or (slot == 2 and inv.Slot2)
+		if not (currentSlotItem and currentSlotItem.Id == "Flare") then
+			local successDeduct = PlayerDataService.DeductScrap(player, 10)
+			if not successDeduct then
+				return false, "Insufficient Scrap balance (requires 10 Scrap)"
+			end
+			log:Info("Deducted 10 Scrap for consumable Flare purchase & equip", { Player = player.Name })
+		end
+	end
+
 	local itemDef = ItemConfig.Items[itemId]
 	local newItem: GameTypes.InventoryItem = {
 		Id = itemDef.Id,
@@ -119,6 +134,37 @@ function InventoryService.SetSlotItem(player: Player, slot: number, itemId: stri
 
 	InventoryService.Sync(player)
 	return true, nil
+end
+
+function InventoryService.HasEquippedItem(player: Player, itemId: string): boolean
+	local inv = inventories[player.UserId]
+	if not inv then return false end
+	return (inv.Slot1 ~= nil and inv.Slot1.Id == itemId) or (inv.Slot2 ~= nil and inv.Slot2.Id == itemId)
+end
+
+function InventoryService.ConsumeEquippedItem(player: Player, itemId: string): boolean
+	local inv = inventories[player.UserId]
+	if not inv then return false end
+
+	if inv.Slot1 and inv.Slot1.Id == itemId then
+		if inv.Slot1.Quantity > 1 then
+			inv.Slot1.Quantity -= 1
+		else
+			inv.Slot1 = nil
+		end
+		InventoryService.Sync(player)
+		return true
+	elseif inv.Slot2 and inv.Slot2.Id == itemId then
+		if inv.Slot2.Quantity > 1 then
+			inv.Slot2.Quantity -= 1
+		else
+			inv.Slot2 = nil
+		end
+		InventoryService.Sync(player)
+		return true
+	end
+
+	return false
 end
 
 function InventoryService.AddMissionItem(player: Player, itemId: string, count: number)

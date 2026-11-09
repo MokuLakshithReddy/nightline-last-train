@@ -1,6 +1,6 @@
 --!strict
 -- EquipmentService.luau
--- Authoritative equipment mechanics: Functional Flashlight beam and Throwing Flares
+-- Authoritative equipment mechanics: Functional Flashlight beam and Throwing Flares with consumption
 
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
@@ -17,7 +17,7 @@ local activeFlashlightModels: { [number]: Model } = {}
 local EquipmentService = {}
 
 function EquipmentService.Init()
-	log:Info("Initializing EquipmentService...")
+	log:Info("Initializing EquipmentService with authoritative equipment state...")
 
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local toggleFlashlight = remotes:FindFirstChild("ToggleFlashlight") :: RemoteEvent?
@@ -138,6 +138,27 @@ function EquipmentService.ThrowFlare(player: Player, direction: Vector3)
 	if not character then return end
 	local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then return end
+
+	local InventoryService = require(script.Parent:WaitForChild("InventoryService"))
+	if not InventoryService.HasEquippedItem(player, "Flare") then
+		log:Warn("Player attempted to throw flare without having one equipped", { Player = player.Name })
+		local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+		if remotes then
+			local notif = remotes:FindFirstChild("Notification") :: RemoteEvent?
+			if notif then
+				notif:FireClient(player, {
+					MessageKey = "NO_FLARE_EQUIPPED",
+					MessageText = "You must equip a Flare before throwing it!",
+					Severity = "Warning",
+					Duration = 3,
+				})
+			end
+		end
+		return
+	end
+
+	-- Authoritatively consume the flare from player inventory slots
+	InventoryService.ConsumeEquippedItem(player, "Flare")
 
 	local cleanDir = direction.Unit
 	if cleanDir.Magnitude ~= cleanDir.Magnitude then

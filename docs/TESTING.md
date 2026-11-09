@@ -59,3 +59,8 @@ Testing in NIGHTLINE is conducted across three levels:
 | **FIX-T3**| Equipment Phase Check| Request swap mid-exploration | Bootstrap phase verification | Swaps rejected outside Hub phases (`WAITING`/`INTERMISSION`/`BOARDING`) | ✅ Passed |
 | **FIX-T4**| Central Interaction Precondition | Interaction triggered | Central validator in ObjectiveService | Rejects if not rostered, dead, wrong phase, or wrong mission type | ✅ Passed |
 | **FIX-T5**| Persistent Idempotency & Stats | Expedition with 0 payout | RewardService.AwardExpeditionRewards | `LastProcessedRoundId` stored in profile; `Statistics.Runs` increments on all runs | ✅ Passed |
+
+| **FIX-T6**| Session Lock Heartbeat & Result Check | Long server session / failed lock | PlayerDataService UpdateAsync | Verifies result ~= nil and strict server ownership; auto-refreshes 300s lease | ✅ Passed |
+| **FIX-T7**| Flare Consumable Deduction & Ownership | Equip & throw flare without locker | InventoryService & EquipmentService | Deducts 10 Scrap on equip if not unlocked; validates and consumes slot item on throw | ✅ Passed |
+| **FIX-T8**| EquipmentService Bootstrap Integration | Server boot & remote listeners | Bootstrap.server.luau Init() | EquipmentService required and initialized; ToggleFlashlight and ThrowFlare active | ✅ Passed |
+| **FIX-T9**| Extraction-Phase Objective Lockdown | Interaction triggered during EXTRACTION | ObjectiveService phase check | Objectives/caches locked during EXTRACTION; only cargo delivery permitted | ✅ Passed |

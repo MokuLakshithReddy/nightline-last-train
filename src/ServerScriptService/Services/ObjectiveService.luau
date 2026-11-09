@@ -1,6 +1,6 @@
 --!strict
 -- ObjectiveService.luau
--- Authoritative objective mechanics, physical entity spawning, artifact drops, unbanked scrap tracking, and strict state validation
+-- Authoritative objective mechanics, physical entity spawning, artifact drops, unbanked scrap tracking, and strict state/phase validation
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -46,7 +46,7 @@ local function createPart(parent: Instance, name: string, size: Vector3, cframe:
 end
 
 function ObjectiveService.Init()
-	log:Info("Initializing ObjectiveService with strict state validation...")
+	log:Info("Initializing ObjectiveService with strict state and phase validation...")
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	objectiveUpdatedRemote = remotes:WaitForChild("ObjectiveUpdated") :: RemoteEvent
 	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
@@ -72,20 +72,20 @@ function ObjectiveService.BindInteractions()
 		local targetPart = prompt.Parent :: BasePart?
 		if not targetPart then return end
 
-		-- Centralized Preconditions Check (Problem 4)
+		-- Centralized Preconditions Check
 		local character = player.Character
 		if not character then return end
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		if not humanoid or humanoid.Health <= 0 then return end
 
-		local RoundService = require(script.Parent:WaitForChild("RoundService"))
-		local currentPhase = RoundService.GetCurrentState()
-		local isStationPhase = (currentPhase == "EXPLORATION" or currentPhase == "EXTRACTION")
-
 		-- Hub Prompts bypass station phase restrictions
 		if promptName == "LockerPrompt" or promptName == "OpenUpgradeTerminalPrompt" then
 			return
 		end
+
+		local RoundService = require(script.Parent:WaitForChild("RoundService"))
+		local currentPhase = RoundService.GetCurrentState()
+		local isStationPhase = (currentPhase == "EXPLORATION" or currentPhase == "EXTRACTION")
 
 		-- All station objective interactions require active expedition phase and roster membership
 		if not isStationPhase then
@@ -98,7 +98,23 @@ function ObjectiveService.BindInteractions()
 			return
 		end
 
-		-- 1. FUSE PICKUP INTERACTION (Strict mission type check)
+		-- STRICT PHASE RESTRICTION (Issue 4):
+		-- During EXTRACTION, station exploration and objective tasks are locked down.
+		-- Only cargo container delivery to the train platform pallet is permitted.
+		if currentPhase == "EXTRACTION" and promptName ~= "DeliverCargoPrompt" then
+			log:Warn("Rejected station interaction during extraction phase", { Player = player.Name, Prompt = promptName })
+			if notificationRemote then
+				notificationRemote:FireClient(player, {
+					MessageKey = "EXTRACTION_LOCKED",
+					MessageText = "Station objectives locked! The train is preparing to depart — EXTRACT NOW!",
+					Severity = "Warning",
+					Duration = 3,
+				})
+			end
+			return
+		end
+
+		-- 1. FUSE PICKUP INTERACTION (Strict mission type & phase check)
 		if promptName == "PickUpFusePrompt" then
 			if not activeMission or activeMission.Type ~= "RestorePower" or activeMission.IsComplete then
 				return
@@ -195,7 +211,7 @@ function ObjectiveService.BindInteractions()
 				})
 			end
 
-		-- 4. CARGO DROP-OFF ON PLATFORM
+		-- 4. CARGO DROP-OFF ON PLATFORM (Permitted in both Exploration and Extraction)
 		elseif promptName == "DeliverCargoPrompt" then
 			if not activeMission or activeMission.Type ~= "RecoverCargo" or activeMission.IsComplete then
 				return
@@ -255,7 +271,7 @@ function ObjectiveService.BindInteractions()
 
 			ObjectiveService.AddProgress(1)
 
-		-- 6. OPTIONAL SCRAP CACHE (Fix for Problem 1: Unbanked Scrap)
+		-- 6. OPTIONAL SCRAP CACHE (Transient Unbanked Scrap)
 		elseif promptName == "ScrapCachePrompt" then
 			prompt.Enabled = false
 			targetPart:Destroy()
@@ -318,29 +334,31 @@ function ObjectiveService.StartMission(missionType: GameTypes.MissionType?): Gam
 		Title = def.Title,
 		Description = def.Description,
 		Progress = 0,
-		TargetProgress = def.TargetCount,
+		TargetProgress = def.TargetProgress,
 		IsComplete = false,
 	}
 
-	log:Info("Initiating mission instance with strict validation...", {
+	log:Info("Initiating primary mission", {
 		Id = activeMission.Id,
 		Type = activeMission.Type,
 		Target = activeMission.TargetProgress,
 	})
 
-	ObjectiveService.SpawnObjectiveEntities(activeMission.Type)
-	ObjectiveService.SpawnOptionalScrapCaches()
-	ObjectiveService.SpawnArtifacts()
+	local station = Workspace:WaitForChild("World"):WaitForChild("Runtime"):FindFirstChild("ActiveStation")
+	if station then
+		ObjectiveService.SpawnObjectiveProps(station, activeMission.Type)
+		ObjectiveService.SpawnOptionalScrapCaches()
+		ObjectiveService.SpawnArtifacts()
+	else
+		log:Warn("Cannot spawn objective items: ActiveStation not found in Runtime.")
+	end
 
 	ObjectiveService.Broadcast()
 	return activeMission
 end
 
-function ObjectiveService.SpawnObjectiveEntities(missionType: GameTypes.MissionType)
+function ObjectiveService.SpawnObjectiveProps(station: Instance, missionType: GameTypes.MissionType)
 	local offset = GameConfig.World.ActiveStationOffset
-	local station = Workspace:WaitForChild("World"):WaitForChild("Runtime"):FindFirstChild("ActiveStation")
-	if not station then return end
-
 	local objectiveFolder = Instance.new("Folder")
 	objectiveFolder.Name = "ObjectiveEntities"
 	objectiveFolder.Parent = station
@@ -348,29 +366,29 @@ function ObjectiveService.SpawnObjectiveEntities(missionType: GameTypes.MissionT
 
 	if missionType == "RestorePower" then
 		local fuseLocations = {
-			Vector3.new(45, 2, 10),
-			Vector3.new(78, 2, 22),
-			Vector3.new(38, 3, 52),
+			Vector3.new(45, 1.5, -45),
+			Vector3.new(25, 1.5, 40),
+			Vector3.new(85, 1.5, 10),
 		}
 
 		for i, loc in ipairs(fuseLocations) do
-			local fusePart = createPart(
+			local fuse = createPart(
 				objectiveFolder,
-				"FuseItem_" .. tostring(i),
+				"IndustrialFuse_" .. tostring(i),
 				Vector3.new(1.2, 0.6, 0.6),
 				CFrame.new(offset + loc),
-				Color3.fromRGB(70, 180, 255),
+				Color3.fromRGB(80, 180, 255),
 				Enum.Material.Neon
 			)
 			local prompt = Instance.new("ProximityPrompt")
 			prompt.Name = "PickUpFusePrompt"
-			prompt.ActionText = "Collect Industrial Fuse"
+			prompt.ActionText = "Pick Up Industrial Fuse"
 			prompt.ObjectText = "Fuse (" .. tostring(i) .. "/3)"
 			prompt.MaxActivationDistance = 8
 			prompt.RequiresLineOfSight = false
-			prompt.HoldDuration = 0.2
-			prompt.Parent = fusePart
-			table.insert(spawnedEntities, fusePart)
+			prompt.HoldDuration = 0.4
+			prompt.Parent = fuse
+			table.insert(spawnedEntities, fuse)
 		end
 
 	elseif missionType == "RecoverCargo" then

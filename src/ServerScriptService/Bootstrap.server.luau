@@ -23,6 +23,8 @@ local REQUIRED_REMOTES = {
 	"RequestDestinationVote",
 	"RequestPurchaseUpgrade",
 	"ProfileUpdated",
+	"ToggleFlashlight",
+	"ThrowFlare",
 }
 
 for _, remoteName in ipairs(REQUIRED_REMOTES) do
@@ -37,7 +39,7 @@ local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Ut
 local log = Logger.new("ServerBootstrap")
 
 log:Info("==================================================")
-log:Info("  NIGHTLINE: LAST TRAIN — SERVER INITIALIZING    ")
+log:Info("  NIGHTLINE: LAST TRAIN — SERVER INITIALIZING     ")
 log:Info("==================================================")
 
 -- Load services in strict dependency order
@@ -47,6 +49,7 @@ local SecurityService = require(servicesFolder:WaitForChild("SecurityService"))
 local AnalyticsService = require(servicesFolder:WaitForChild("AnalyticsService"))
 local PlayerDataService = require(servicesFolder:WaitForChild("PlayerDataService"))
 local InventoryService = require(servicesFolder:WaitForChild("InventoryService"))
+local EquipmentService = require(servicesFolder:WaitForChild("EquipmentService"))
 local InteractionService = require(servicesFolder:WaitForChild("InteractionService"))
 local StationService = require(servicesFolder:WaitForChild("StationService"))
 local ObjectiveService = require(servicesFolder:WaitForChild("ObjectiveService"))
@@ -60,6 +63,7 @@ SecurityService.Init()
 AnalyticsService.Init()
 PlayerDataService.Init()
 InventoryService.Init()
+EquipmentService.Init()
 InteractionService.Init()
 StationService.Init()
 ObjectiveService.Init()
@@ -76,7 +80,7 @@ requestEquipmentRemote.OnServerEvent:Connect(function(player: Player, slotIndex:
 	local validId, id = SecurityService.ValidateString(itemId, 32)
 	if not validSlot or not slot then return end
 
-	-- Check Phase Restriction (Problem 3)
+	-- Check Phase Restriction (Equipment loadouts restricted to Hub preparation)
 	local currentPhase = RoundService.GetCurrentState()
 	local allowedPhase = (currentPhase == "WAITING" or currentPhase == "INTERMISSION" or currentPhase == "BOARDING")
 	if not allowedPhase then
