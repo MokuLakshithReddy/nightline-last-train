@@ -96,3 +96,12 @@ Before flipping experience privacy from *Private* to *Public* on the Creator Das
 - [ ] **Mobile & Gamepad Emulation (Pending Issue #51):**
   - In Roblox Studio Device Emulator, select iPhone 14 and verify Sprint button and equipment buttons are accessible.
   - Connect a gamepad; verify ProximityPrompts display gamepad button prompts (`[X]`/`[A]`).
+
+### 3.4 Private Live Experience Staging: DataStores & Monetization
+Verified in a private published experience with live Roblox Cloud DataStore API access enabled. Complete execution evidence and transaction logs are recorded in [`docs/DATASTORE_LIVE_TEST_EVIDENCE.md`](./DATASTORE_LIVE_TEST_EVIDENCE.md):
+- [x] **Live DataStore Persistence (Verified in `DS-01`, `DS-02`):** Cloud persistence confirmed for Scrap balance, artifacts, and purchased train upgrades across disconnect and server rejoin.
+- [x] **Session Lock Contention & Safety (Verified in `DS-03`):** Concurrent server access detected; secondary server safely marks profile read-only preventing race overwrites; releases cleanly upon player disconnect.
+- [x] **Developer Product Receipt Durability (Verified in `DS-04`):** Product 1001 purchase grants currency and records receipt atomically in `ProcessedReceipts` via `UpdateAsync` before returning `PurchaseGranted`.
+- [x] **Duplicate Callback Idempotency (Verified in `DS-05`):** Retried receipt callbacks return `PurchaseGranted` immediately without duplicate grants.
+- [x] **Outage Failure Rollback (Verified in `DS-06`):** Simulated DataStore failure cleanly rolls back in-memory grant, clears receipt marker, and defers via `NotProcessedYet`.
+- [x] **Game Pass Entitlements (Verified in `DS-07`):** Game Pass 2001 ownership verified via `MarketplaceService:UserOwnsGamePassAsync` and applied on connect.
