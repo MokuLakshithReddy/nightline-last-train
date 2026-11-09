@@ -76,9 +76,22 @@ local requestEquipmentRemote = remotesFolder:WaitForChild("RequestEquipment") ::
 requestEquipmentRemote.OnServerEvent:Connect(function(player: Player, slotIndex: any, itemId: any)
 	if not SecurityService.CheckRateLimit(player, 1) then return end
 
-	local validSlot, slot = SecurityService.ValidateNumber(slotIndex, 1, 2)
+	-- Reject non-integer, NaN, infinite, and out-of-range slot values at the remote boundary
+	local validSlot, slot = SecurityService.ValidateInteger(slotIndex, 1, 2)
+	if not validSlot or not slot then
+		local notifRemote = remotesFolder:FindFirstChild("Notification") :: RemoteEvent?
+		if notifRemote then
+			notifRemote:FireClient(player, {
+				MessageKey = "EQUIP_REJECTED",
+				MessageText = "Invalid equipment slot specified (must be slot 1 or 2).",
+				Severity = "Warning",
+				Duration = 3,
+			})
+		end
+		return
+	end
+
 	local validId, id = SecurityService.ValidateString(itemId, 32)
-	if not validSlot or not slot then return end
 
 	-- Check Phase Restriction (Equipment loadouts restricted to Hub preparation)
 	local currentPhase = RoundService.GetCurrentState()
