@@ -3,7 +3,6 @@
 -- Authoritative server telemetry for core gameplay funnels and economic health
 -- Integrates with Roblox AnalyticsService with strict payload validation, schema hygiene, and PII avoidance
 
-local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RobloxAnalytics: any = nil
 pcall(function()
@@ -146,7 +145,7 @@ function AnalyticsService.TrackUpgradePurchased(player: Player, upgradeId: strin
 				"Scrap",
 				costScrap,
 				remainingBalance,
-				Enum.AnalyticsEconomyTransactionType.ShopPurchase,
+				Enum.AnalyticsEconomyTransactionType.Shop,
 				upgradeId
 			)
 		end)

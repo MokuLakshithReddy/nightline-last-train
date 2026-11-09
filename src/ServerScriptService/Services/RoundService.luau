@@ -279,11 +279,7 @@ function RoundService.GetCurrentRoundId(): string
 end
 
 function RoundService.GetDestinationVotes(): { [number]: string }
-	local copy = {}
-	for k, v in pairs(playerVotes) do
-		copy[k] = v
-	end
-	return copy
+	return table.clone(playerVotes)
 end
 
 function RoundService.GetCurrentState(): GameTypes.RoundState
