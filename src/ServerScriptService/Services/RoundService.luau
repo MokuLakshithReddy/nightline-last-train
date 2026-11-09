@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GameConfig"))
+local StationConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("StationConfig"))
 local GameTypes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"):WaitForChild("GameTypes"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
 local Signal = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Signal"))
@@ -21,6 +22,7 @@ local MovementService = require(script.Parent:WaitForChild("MovementService"))
 -- Remotes
 local roundStateRemote: RemoteEvent? = nil
 local notificationRemote: RemoteEvent? = nil
+local destinationVotesRemote: RemoteEvent? = nil
 
 local currentState: GameTypes.RoundState = "WAITING"
 local phaseEndsAt: number = 0
@@ -28,6 +30,9 @@ local roundCounter: number = 0
 local currentRoundId: string = ""
 local currentStationId: string = GameConfig.Round.DefaultStationId
 local stateGeneration: number = 0
+
+-- Destination voting state
+local playerVotes: { [number]: string } = {}
 
 -- Crew roster for active expedition
 local activeRoster: { [number]: Player } = {}
@@ -103,10 +108,15 @@ function RoundService.Init()
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	roundStateRemote = remotes:WaitForChild("RoundStateChanged") :: RemoteEvent
 	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
+	destinationVotesRemote = remotes:FindFirstChild("DestinationVotesUpdated") :: RemoteEvent?
 
 	Players.PlayerAdded:Connect(function(player)
 		if roundStateRemote then
 			roundStateRemote:FireClient(player, currentState, os.clock(), phaseEndsAt, currentStationId)
+		end
+
+		if destinationVotesRemote then
+			destinationVotesRemote:FireClient(player, RoundService.GetDestinationVotesSummary())
 		end
 
 		player.CharacterAdded:Connect(function()
@@ -120,11 +130,155 @@ function RoundService.Init()
 		extractedPlayers[player.UserId] = nil
 		eliminatedPlayers[player.UserId] = nil
 
+		if playerVotes[player.UserId] then
+			playerVotes[player.UserId] = nil
+			if RoundService.IsVotingOpen() and destinationVotesRemote then
+				destinationVotesRemote:FireAllClients(RoundService.GetDestinationVotesSummary())
+			end
+		end
+
 		if (currentState == "EXPLORATION" or currentState == "EXTRACTION") and next(activeRoster) == nil then
 			log:Warn("All active expedition players left; aborting round safely")
 			RoundService.TransitionTo("RESULTS")
 		end
 	end)
+end
+
+function RoundService.IsVotingOpen(): boolean
+	return currentState == "WAITING" or currentState == "INTERMISSION" or currentState == "BOARDING"
+end
+
+function RoundService.GetDestinationVotesSummary(): { [string]: any }
+	local tally: { [string]: number } = {}
+	local stationOptions: { [string]: string } = {}
+
+	for id, def in pairs(StationConfig.Stations) do
+		tally[id] = 0
+		stationOptions[id] = def.Name
+	end
+
+	local totalVotes = 0
+	for userId, stationId in pairs(playerVotes) do
+		if Players:GetPlayerByUserId(userId) and tally[stationId] ~= nil then
+			tally[stationId] += 1
+			totalVotes += 1
+		end
+	end
+
+	local leadingStation = StationConfig.DefaultStation
+	local maxVotes = -1
+	for id, count in pairs(tally) do
+		if count > maxVotes then
+			maxVotes = count
+			leadingStation = id
+		end
+	end
+
+	return {
+		Tally = tally,
+		TotalVotes = totalVotes,
+		LeadingStation = leadingStation,
+		StationOptions = stationOptions,
+		VotingOpen = RoundService.IsVotingOpen(),
+	}
+end
+
+function RoundService.RecordDestinationVote(player: Player, stationId: string): (boolean, string?)
+	if not RoundService.IsVotingOpen() then
+		return false, "Destination voting is closed once train preparation ends"
+	end
+
+	if not StationConfig.Stations[stationId] then
+		return false, "Invalid destination station ID"
+	end
+
+	playerVotes[player.UserId] = stationId
+	log:Info("Player cast destination vote", {
+		Player = player.Name,
+		UserId = player.UserId,
+		Destination = stationId,
+	})
+
+	if destinationVotesRemote then
+		destinationVotesRemote:FireAllClients(RoundService.GetDestinationVotesSummary())
+	end
+
+	return true, nil
+end
+
+function RoundService.TallyDestinationVotes(): string
+	local tally: { [string]: number } = {}
+	local stationKeys: { string } = {}
+
+	for id in pairs(StationConfig.Stations) do
+		tally[id] = 0
+		table.insert(stationKeys, id)
+	end
+	table.sort(stationKeys)
+
+	local totalVotes = 0
+	for userId, stationId in pairs(playerVotes) do
+		if Players:GetPlayerByUserId(userId) and tally[stationId] ~= nil then
+			tally[stationId] += 1
+			totalVotes += 1
+		end
+	end
+
+	local winner = StationConfig.DefaultStation
+	local highestCount = 0
+
+	if totalVotes == 0 then
+		winner = StationConfig.DefaultStation
+		log:Info("No destination votes cast; defaulting to standard line", { StationId = winner })
+	else
+		-- Deterministic tie-breaker:
+		-- If default station is tied for highest count, prefer default station;
+		-- Otherwise select lexicographically first station among tied leaders.
+		for _, id in ipairs(stationKeys) do
+			local count = tally[id]
+			if count > highestCount then
+				highestCount = count
+				winner = id
+			elseif count == highestCount and highestCount > 0 then
+				if id == StationConfig.DefaultStation then
+					winner = id
+				end
+			end
+		end
+		log:Info("Destination vote tallied", {
+			Winner = winner,
+			Votes = highestCount,
+			TotalCast = totalVotes,
+		})
+	end
+
+	currentStationId = winner
+
+	local def = StationConfig.Stations[currentStationId]
+	local stationName = def and def.Name or currentStationId
+	if totalVotes > 0 then
+		broadcastNotification("Destination confirmed by crew vote: " .. stationName .. " (" .. tostring(highestCount) .. " votes)!", "Success")
+	else
+		broadcastNotification("Standard destination scheduled: " .. stationName .. ".", "Info")
+	end
+
+	if destinationVotesRemote then
+		destinationVotesRemote:FireAllClients(RoundService.GetDestinationVotesSummary())
+	end
+
+	return currentStationId
+end
+
+function RoundService.GetCurrentStationId(): string
+	return currentStationId
+end
+
+function RoundService.GetDestinationVotes(): { [number]: string }
+	local copy = {}
+	for k, v in pairs(playerVotes) do
+		copy[k] = v
+	end
+	return copy
 end
 
 function RoundService.GetCurrentState(): GameTypes.RoundState
@@ -178,6 +332,7 @@ function RoundService.StartGameLoop()
 					end
 
 					if next(activeRoster) ~= nil then
+						currentStationId = RoundService.TallyDestinationVotes()
 						RoundService.TransitionTo("TRAVEL")
 					else
 						RoundService.TransitionTo("WAITING")
@@ -333,7 +488,9 @@ function RoundService.TransitionTo(newState: GameTypes.RoundState)
 		broadcastNotification("BOARDING: Finalize equipment loadout inside the carriage.", "Warning")
 
 	elseif newState == "TRAVEL" then
-		broadcastNotification("Train departing from terminal! In transit to Station 001...", "Alert")
+		local def = StationConfig.Stations[currentStationId]
+		local stationName = def and def.Name or currentStationId
+		broadcastNotification("Train departing from terminal! In transit to " .. stationName .. "...", "Alert")
 
 	elseif newState == "EXTRACTION" then
 		broadcastNotification("WARNING: Last train departure in 60s! Get to the extraction gate!", "Alert")
@@ -349,6 +506,11 @@ function RoundService.CleanupRound()
 	table.clear(activeRoster)
 	table.clear(extractedPlayers)
 	table.clear(eliminatedPlayers)
+	table.clear(playerVotes)
+	currentStationId = GameConfig.Round.DefaultStationId
+	if destinationVotesRemote then
+		destinationVotesRemote:FireAllClients(RoundService.GetDestinationVotesSummary())
+	end
 	for _, player in ipairs(Players:GetPlayers()) do
 		teleportToHub(player)
 	end
