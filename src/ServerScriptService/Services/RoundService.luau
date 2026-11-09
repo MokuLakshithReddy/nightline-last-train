@@ -18,6 +18,7 @@ local ObjectiveService = require(script.Parent:WaitForChild("ObjectiveService"))
 local RewardService = require(script.Parent:WaitForChild("RewardService"))
 local MonsterService = require(script.Parent:WaitForChild("MonsterService"))
 local MovementService = require(script.Parent:WaitForChild("MovementService"))
+local AnalyticsService = require(script.Parent:WaitForChild("AnalyticsService"))
 
 -- Remotes
 local roundStateRemote: RemoteEvent? = nil
@@ -273,6 +274,10 @@ function RoundService.GetCurrentStationId(): string
 	return currentStationId
 end
 
+function RoundService.GetCurrentRoundId(): string
+	return currentRoundId
+end
+
 function RoundService.GetDestinationVotes(): { [number]: string }
 	local copy = {}
 	for k, v in pairs(playerVotes) do
@@ -350,6 +355,10 @@ function RoundService.StartGameLoop()
 						log:Error("Failed to load station in EXPLORATION: " .. tostring(stationErr))
 					end
 
+					local rosterCount = 0
+					for _ in pairs(activeRoster) do rosterCount += 1 end
+					AnalyticsService.TrackExpeditionStart(currentRoundId, currentStationId, rosterCount)
+
 					local missions: { GameTypes.MissionType } = { "RestorePower", "RecoverCargo", "RepairSignal" }
 					local missionIndex = ((roundCounter - 1) % #missions) + 1
 					local selectedMission = missions[missionIndex]
@@ -399,6 +408,8 @@ function RoundService.StartGameLoop()
 								local pos = (player.Character.HumanoidRootPart :: BasePart).Position
 								if StationService.IsInsideExtractionZone(pos) then
 									extractedPlayers[userId] = true
+									local unbanked = ObjectiveService.GetUnbankedScrap(player)
+									AnalyticsService.TrackPlayerExtraction(player, currentRoundId, unbanked)
 								end
 							end
 							teleportToHub(player)
@@ -411,6 +422,12 @@ function RoundService.StartGameLoop()
 				elseif currentState == "RESULTS" then
 					local mission = ObjectiveService.GetActiveMission()
 					local missionDone = mission ~= nil and mission.IsComplete
+
+					local survivedCount = 0
+					for _ in pairs(extractedPlayers) do survivedCount += 1 end
+					local totalRoster = 0
+					for _ in pairs(activeRoster) do totalRoster += 1 end
+					AnalyticsService.TrackExpeditionEnd(currentRoundId, currentStationId, survivedCount, totalRoster, 0)
 
 					for userId, player in pairs(activeRoster) do
 						pcall(function()
