@@ -21,7 +21,7 @@
 
 ---
 
-## Automated Test Suite Coverage (27/27 Passing)
+## Automated Test Suite Coverage (34/34 Passing)
 
 The automated regression test suite (`tests/run_tests.py`) validates core server authority, game loop mechanics, persistence integrity, and security invariants in CI prior to merge:
 
@@ -54,6 +54,13 @@ The automated regression test suite (`tests/run_tests.py`) validates core server
 | **FIX-T36** | Studio Staging Evidence | Validates execution evidence for Solo and 6-client multiplayer runs in `docs/STAGING_EVIDENCE.md` against Roblox Studio v0.746.0.7461269 and tested commit SHA | ✅ Passed |
 | **FIX-T37** | DataStore Live Test Evidence | Validates Cloud DataStore persistence evidence (DS-01 to DS-07), catalog ID mapping (1001-1004, 2001-2003), session locks, and durable receipt idempotency | ✅ Passed |
 | **FIX-T38** | Mobile & Gamepad QA Evidence | Validates iPhone 14 touch layout, Xbox controller bindings (L3, Y, B, D-Pad), ProximityPrompt glyphs, ButtonB modal dismissal, and presentation QA (QA-01 to QA-07) | ✅ Passed |
+| **FIX-T39** | Station Platform Portal | Portal archway geometry in `StationService` preventing platform blockage; resilient extraction zone bounding box fallback | ✅ Passed |
+| **FIX-T40** | Teleport Registration Destination Tracking | `MovementService.RegisterTeleport` destination coordinate tracking with grace period; Studio profile recovery on mock probe | ✅ Passed |
+| **FIX-T41** | Teleport Client Remote Synchronization | Bidirectional `TeleportClient` RemoteEvent contract and client-side character pivot synchronization | ✅ Passed |
+| **FIX-T42** | Objective Contract & UI Formatting | `TargetProgress` parity with `TargetCount` in `ObjectiveConfig`, safe nil format fallbacks in `UIController` | ✅ Passed |
+| **FIX-T43** | Studio Persistence Mock Initialization | Synchronous `isStudioMockMode = RunService:IsStudio()` initialization eliminating startup race; audio playback error resilience | ✅ Passed |
+| **FIX-T44** | Monster Spawn Station Parameter | Destination station ID propagation to `MonsterService.SpawnMonster` and dynamic station logging | ✅ Passed |
+| **FIX-T45** | Player Elimination & Team Wipe Lifecycle | `RoundService.EliminatePlayer`, immediate transition to `RESULTS` on full team wipe, carried cargo drops for surviving teammates, and Hub footstep noise exclusion | ✅ Passed |
 
 ---
 

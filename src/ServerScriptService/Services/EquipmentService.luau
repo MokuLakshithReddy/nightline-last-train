@@ -95,10 +95,10 @@ function EquipmentService.ToggleFlashlight(player: Player): boolean
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 then return false end
 
-	-- 3. In station expedition phases, require active roster membership
+	-- 3. In station expedition phases, require active roster membership and non-eliminated state
 	local currentPhase = RoundService.GetCurrentState()
 	local isStationPhase = (currentPhase == "EXPLORATION" or currentPhase == "EXTRACTION")
-	if isStationPhase and not RoundService.IsPlayerInRoster(player) then
+	if isStationPhase and not RoundService.IsPlayerActiveInExpedition(player) then
 		return false
 	end
 
@@ -227,9 +227,9 @@ function EquipmentService.ThrowFlare(player: Player, direction: any)
 		return
 	end
 
-	-- 5. Require active roster membership
-	if not RoundService.IsPlayerInRoster(player) then
-		log:Warn("Rejected flare throw from non-rostered player", { Player = player.Name })
+	-- 5. Require active roster membership and non-eliminated state
+	if not RoundService.IsPlayerActiveInExpedition(player) then
+		log:Warn("Rejected flare throw from non-active or eliminated player", { Player = player.Name })
 		return
 	end
 

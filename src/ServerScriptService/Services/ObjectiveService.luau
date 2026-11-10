@@ -67,6 +67,48 @@ function ObjectiveService.ClearUnbankedScrap(player: Player)
 	unbankedScrap[player.UserId] = nil
 end
 
+function ObjectiveService.HandlePlayerElimination(player: Player)
+	-- 1. If player was carrying a cargo crate, drop it on the ground at their position
+	if carryingCargo[player.UserId] then
+		local carriedBox = carryingCargo[player.UserId]
+		local dropPos = if player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			then (player.Character.HumanoidRootPart :: BasePart).Position
+			else (GameConfig.World.ActiveStationOffset + Vector3.new(20, 3, 0))
+
+		carriedBox:Destroy()
+		carryingCargo[player.UserId] = nil
+		InventoryService.ConsumeMissionItem(player, "CargoContainer")
+
+		local runtimeStation = Workspace:FindFirstChild("World")
+			and Workspace.World:FindFirstChild("Runtime")
+			and Workspace.World.Runtime:FindFirstChild("ActiveStation")
+
+		if runtimeStation then
+			local droppedCrate = createPart(
+				runtimeStation,
+				"DroppedCargoCrate",
+				Vector3.new(3, 3, 3),
+				CFrame.new(dropPos + Vector3.new(0, 1.5, 0)),
+				Color3.fromRGB(180, 140, 60),
+				Enum.Material.Wood
+			)
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Name = "PickUpCargoPrompt"
+			prompt.ActionText = "Pick Up Cargo Crate"
+			prompt.ObjectText = "Dropped Cargo"
+			prompt.MaxActivationDistance = 8
+			prompt.HoldDuration = 1.0
+			prompt.RequiresLineOfSight = false
+			prompt.Parent = droppedCrate
+			table.insert(spawnedEntities, droppedCrate)
+			log:Info("Dropped cargo crate spawned for teammates", { Player = player.Name, Position = tostring(dropPos) })
+		end
+	end
+
+	-- 2. Clear unbanked scrap upon elimination (unbanked scrap is lost if not extracted)
+	unbankedScrap[player.UserId] = nil
+end
+
 function ObjectiveService.BindInteractions()
 	InteractionService.OnPromptTriggered:Connect(function(prompt: ProximityPrompt, player: Player)
 		local promptName = prompt.Name
@@ -94,8 +136,8 @@ function ObjectiveService.BindInteractions()
 			return
 		end
 
-		if not RoundService.IsPlayerInRoster(player) then
-			log:Warn("Rejected objective interaction from non-rostered player", { Player = player.Name })
+		if not RoundService.IsPlayerActiveInExpedition(player) then
+			log:Warn("Rejected objective interaction from non-active or eliminated player", { Player = player.Name })
 			return
 		end
 
