@@ -151,20 +151,31 @@ function PlayerDataService.Init()
 
 	local isStudio = RunService:IsStudio()
 	if isStudio then
-		-- In Studio, check if API access to DataStores is enabled
-		local testOk, ds = pcall(function()
-			return DataStoreService:GetDataStore(DATASTORE_NAME)
+		-- In Studio, check if API access to DataStores is actually enabled
+		local testOk = pcall(function()
+			local testDs = DataStoreService:GetDataStore("__StudioApiCheck")
+			testDs:GetAsync("__probe__")
 		end)
-		if testOk and ds then
-			dataStore = ds
-			dataStoreAvailable = true
-			isStudioMockMode = false
-			log:Info("Connected to live DataStoreService in Studio.")
+		if testOk then
+			local success, ds = pcall(function()
+				return DataStoreService:GetDataStore(DATASTORE_NAME)
+			end)
+			if success and ds then
+				dataStore = ds
+				dataStoreAvailable = true
+				isStudioMockMode = false
+				log:Info("Connected to live DataStoreService in Studio.")
+			else
+				dataStore = nil
+				dataStoreAvailable = false
+				isStudioMockMode = true
+				log:Info("Running in Studio with intentional mock persistence mode.")
+			end
 		else
 			dataStore = nil
 			dataStoreAvailable = false
 			isStudioMockMode = true
-			log:Info("Running in Studio with intentional mock persistence mode.")
+			log:Info("Running in Studio with intentional mock persistence mode (API access disabled).")
 		end
 	else
 		-- Production environment: MUST connect to live DataStore
@@ -189,6 +200,14 @@ function PlayerDataService.Init()
 		PlayerDataService.Sync(player, profile)
 		AnalyticsService.TrackSessionStart(player, profile.Statistics and profile.Statistics.Runs or 0, profile.Scrap)
 	end)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(function()
+			local profile = PlayerDataService.LoadProfile(player)
+			PlayerDataService.Sync(player, profile)
+			AnalyticsService.TrackSessionStart(player, profile.Statistics and profile.Statistics.Runs or 0, profile.Scrap)
+		end)
+	end
 
 	Players.PlayerRemoving:Connect(function(player)
 		PlayerDataService.SaveProfile(player, true)
@@ -283,11 +302,21 @@ function PlayerDataService.LoadProfile(player: Player): GameTypes.PlayerProfile
 		end
 
 		if not lockSuccess then
-			log:Error("Failed to acquire session lock; setting profile to read-only to prevent data corruption", {
-				UserId = userId,
-			})
-			loadFailed[userId] = true
-			profile = deepCopy(DefaultData)
+			if RunService:IsStudio() then
+				log:Warn("Studio DataStore session lock acquisition failed; falling back to writable in-memory mock profile for testing", {
+					UserId = userId,
+				})
+				isStudioMockMode = true
+				dataStoreAvailable = false
+				loadFailed[userId] = false
+				profile = deepCopy(DefaultData)
+			else
+				log:Error("Failed to acquire session lock; setting profile to read-only to prevent data corruption", {
+					UserId = userId,
+				})
+				loadFailed[userId] = true
+				profile = deepCopy(DefaultData)
+			end
 		end
 	elseif isStudioMockMode then
 		profile = deepCopy(DefaultData)
