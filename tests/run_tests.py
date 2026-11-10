@@ -1207,6 +1207,22 @@ def test_mobile_gamepad_qa_integrity():
     assert "[x] **Mobile & Gamepad Emulation" in release_content, "RELEASE_GUIDE.md must mark Mobile & Gamepad Emulation complete"
 
 
+@test_case("Station platform portal and extraction zone resilience (FIX-T39)")
+def test_station_platform_portal():
+    with open("src/ServerScriptService/Services/StationService.luau", "r", encoding="utf-8") as f:
+        station_content = f.read()
+
+    # Ensure unbroken 80-stud PlatformWall is replaced with segmented portal geometry
+    assert "PlatformWallNorth" in station_content, "StationService must define PlatformWallNorth"
+    assert "PlatformWallSouth" in station_content, "StationService must define PlatformWallSouth"
+    assert "PlatformPortalHeader" in station_content, "StationService must define PlatformPortalHeader"
+    assert "Vector3.new(1.5, 16, 80)" not in station_content, "Solid 80-stud blocking PlatformWall must not exist"
+
+    # Ensure extraction zone check falls back to Workspace.World.Runtime
+    assert "local world = Workspace:FindFirstChild(\"World\")" in station_content, "IsInsideExtractionZone must query World fallback"
+    assert "station = runtime and runtime:FindFirstChild(\"ActiveStation\")" in station_content, "IsInsideExtractionZone must query ActiveStation"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1243,6 +1259,7 @@ def main():
     test_staging_evidence_integrity()
     test_datastore_live_evidence_integrity()
     test_mobile_gamepad_qa_integrity()
+    test_station_platform_portal()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")
