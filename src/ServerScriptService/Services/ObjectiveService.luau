@@ -53,6 +53,12 @@ function ObjectiveService.Init()
 	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
 
 	ObjectiveService.BindInteractions()
+
+	-- Handle player disconnects during an expedition
+	local Players = game:GetService("Players")
+	Players.PlayerRemoving:Connect(function(player: Player)
+		ObjectiveService.HandlePlayerElimination(player)
+	end)
 end
 
 function ObjectiveService.GetCollectedArtifacts(player: Player): { string }
@@ -133,6 +139,10 @@ function ObjectiveService.BindInteractions()
 		-- All station objective interactions require active expedition phase and roster membership
 		if not isStationPhase then
 			log:Warn("Rejected objective interaction outside exploration/extraction phase", { Player = player.Name, Phase = currentPhase })
+			return
+		end
+
+		if not prompt.Enabled then
 			return
 		end
 

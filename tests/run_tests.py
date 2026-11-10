@@ -1389,6 +1389,38 @@ def test_player_elimination_lifecycle_and_team_wipe():
         "UIController must present clear ELIMINATED (HUB) banner/label"
 
 
+@test_case("Multiplayer lifecycle resilience, concurrent prompt locking, and monster target filtering (FIX-T46)")
+def test_multiplayer_lifecycle_and_targeting_resilience():
+    with open("src/ServerScriptService/AI/HollowAI.luau", "r", encoding="utf-8") as f:
+        hollow_ai = f.read()
+    with open("src/ServerScriptService/Services/MonsterService.luau", "r", encoding="utf-8") as f:
+        monster_svc = f.read()
+    with open("src/ServerScriptService/Services/ObjectiveService.luau", "r", encoding="utf-8") as f:
+        obj_svc = f.read()
+
+    # 1. HollowAI target filtering mechanism
+    assert "function HollowAI.SetTargetFilter(predicate: ((Player) -> boolean)?)" in hollow_ai, \
+        "HollowAI must provide SetTargetFilter to prevent targeting eliminated players"
+    assert "if targetFilterPredicate and not targetFilterPredicate(player) then" in hollow_ai, \
+        "HollowAI scanForTargets must filter players through predicate"
+    assert "if not target or (targetFilterPredicate and not targetFilterPredicate(target))" in hollow_ai, \
+        "HollowAI CHASE state must drop targets that become filtered/eliminated"
+
+    # 2. MonsterService wires target filter to RoundService.IsPlayerActiveInExpedition
+    assert "HollowAI.SetTargetFilter" in monster_svc, \
+        "MonsterService must configure HollowAI target filter"
+    assert "RoundService.IsPlayerActiveInExpedition(player)" in monster_svc, \
+        "MonsterService must filter monster targets through RoundService.IsPlayerActiveInExpedition"
+
+    # 3. ObjectiveService disconnect cleanup & prompt.Enabled race condition guard
+    assert "Players.PlayerRemoving:Connect(function(player: Player)" in obj_svc, \
+        "ObjectiveService must listen to Players.PlayerRemoving"
+    assert "ObjectiveService.HandlePlayerElimination(player)" in obj_svc, \
+        "ObjectiveService must handle player elimination/drop on PlayerRemoving"
+    assert "if not prompt.Enabled then" in obj_svc, \
+        "ObjectiveService must check prompt.Enabled before executing interaction to prevent concurrent race conditions"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1432,6 +1464,7 @@ def main():
     test_studio_persistence_initialization_and_audio_resilience()
     test_monster_spawn_station_parameter_propagation()
     test_player_elimination_lifecycle_and_team_wipe()
+    test_multiplayer_lifecycle_and_targeting_resilience()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

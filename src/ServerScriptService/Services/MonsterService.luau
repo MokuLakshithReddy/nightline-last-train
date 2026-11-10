@@ -45,6 +45,17 @@ function MonsterService.Init()
 		lastNoisePos[player.UserId] = nil
 	end)
 
+	-- Filter monster targeting so only active, non-eliminated players in the station are chased
+	HollowAI.SetTargetFilter(function(player: Player): boolean
+		local roundServiceLoaded, RoundService = pcall(function()
+			return require(script.Parent:WaitForChild("RoundService"))
+		end)
+		if roundServiceLoaded and RoundService then
+			return RoundService.IsPlayerActiveInExpedition(player)
+		end
+		return true
+	end)
+
 	HollowAI.OnPlayerAttacked:Connect(function(player: Player)
 		log:Info("Handling player elimination by The Hollow", { Player = player.Name })
 
