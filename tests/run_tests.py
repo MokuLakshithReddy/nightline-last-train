@@ -1423,6 +1423,8 @@ def test_multiplayer_lifecycle_and_targeting_resilience():
         "ObjectiveService must check prompt.Enabled before executing interaction to prevent concurrent race conditions"
     assert "ActiveStation runtime unavailable; destroyed carried cargo" in obj_svc, \
         "ObjectiveService must safely log and handle cargo cleanup when ActiveStation runtime is unavailable"
+    assert "if activeMission.IsComplete then\n\t\t\t\tprompt.Enabled = false" in obj_svc or "if activeMission.IsComplete then" in obj_svc, \
+        "ObjectiveService must disable DeliverCargoPrompt when activeMission is complete"
 
 
 # =========================================================================

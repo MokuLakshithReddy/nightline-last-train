@@ -313,6 +313,11 @@ function ObjectiveService.BindInteractions()
 
 			ObjectiveService.AddProgress(1, player)
 
+			-- If all cargo delivered and mission complete, disable delivery pallet prompt permanently
+			if activeMission.IsComplete then
+				prompt.Enabled = false
+			end
+
 		-- 5. SIGNAL RELAY TERMINAL REBOOT
 		elseif promptName == "RebootSignalPrompt" then
 			if not activeMission or activeMission.Type ~= "RepairSignal" or activeMission.IsComplete then
