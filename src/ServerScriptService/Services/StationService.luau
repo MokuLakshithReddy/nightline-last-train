@@ -150,11 +150,13 @@ function StationService.LoadStation(stationId: string?): Model
 	dropPrompt.HoldDuration = 0.5
 	dropPrompt.Parent = cargoDropPoint
 
-	-- Platform Overhead Canopy & Wall
-	createPart(platformFolder, "PlatformWall", Vector3.new(1.5, 16, 80), CFrame.new(offset + Vector3.new(12, 8, 0)), Color3.fromRGB(40, 42, 46), Enum.Material.Brick)
+	-- Platform Overhead Canopy & Partition Wall with Entrance Portal
+	createPart(platformFolder, "PlatformWallNorth", Vector3.new(1.5, 16, 26), CFrame.new(offset + Vector3.new(12, 8, 27)), Color3.fromRGB(40, 42, 46), Enum.Material.Brick)
+	createPart(platformFolder, "PlatformWallSouth", Vector3.new(1.5, 16, 26), CFrame.new(offset + Vector3.new(12, 8, -27)), Color3.fromRGB(40, 42, 46), Enum.Material.Brick)
+	createPart(platformFolder, "PlatformPortalHeader", Vector3.new(1.5, 4, 28), CFrame.new(offset + Vector3.new(12, 14, 0)), Color3.fromRGB(40, 42, 46), Enum.Material.Brick)
 	createPart(platformFolder, "PlatformRoof", Vector3.new(26, 1.5, 84), CFrame.new(offset + Vector3.new(0, 16, 0)), Color3.fromRGB(30, 32, 35), Enum.Material.Metal)
 
-	createSign(platformFolder, "<- TO TRAIN / TO CONCOURSE ->", CFrame.new(offset + Vector3.new(11.2, 12, 0)), Vector3.new(0.4, 3, 20), Enum.NormalId.Left)
+	createSign(platformFolder, "<- TO TRAIN / TO CONCOURSE ->", CFrame.new(offset + Vector3.new(11.2, 13, 0)), Vector3.new(0.4, 2.5, 20), Enum.NormalId.Left)
 
 	-- =========================================================================
 	-- 2. AREA: MAIN CONCOURSE (Central Transit Navigation Hub)
@@ -409,8 +411,14 @@ function StationService.GetSpawnPosition(): Vector3
 end
 
 function StationService.IsInsideExtractionZone(position: Vector3): boolean
-	if not currentStation then return false end
-	local platform = currentStation:FindFirstChild("Platform")
+	local station = currentStation
+	if not station or not station.Parent then
+		local world = Workspace:FindFirstChild("World")
+		local runtime = world and world:FindFirstChild("Runtime")
+		station = runtime and runtime:FindFirstChild("ActiveStation") :: Model?
+	end
+	if not station then return false end
+	local platform = station:FindFirstChild("Platform")
 	if not platform then return false end
 	local zone = platform:FindFirstChild("ExtractionZone") :: BasePart?
 	if not zone then return false end
