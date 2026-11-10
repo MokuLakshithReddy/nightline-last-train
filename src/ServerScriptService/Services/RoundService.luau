@@ -82,11 +82,18 @@ end
 local function teleportPlayer(player: Player, destination: Vector3)
 	local character = player.Character
 	if character then
+		MovementService.RegisterTeleport(player, 3.5, destination)
+		character:PivotTo(CFrame.new(destination))
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
-			MovementService.RegisterTeleport(player, 3.5, destination)
-			root.CFrame = CFrame.new(destination)
 			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end
+
+		local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+		local teleportRemote = remotes and remotes:FindFirstChild("TeleportClient") :: RemoteEvent?
+		if teleportRemote then
+			teleportRemote:FireClient(player, destination)
 		end
 	end
 end
