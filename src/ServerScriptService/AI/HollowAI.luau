@@ -161,6 +161,9 @@ local function scanForTargets(context: HollowContext): Player?
 	-- 2. Noise detection check (if no direct sight)
 	if not closestTarget then
 		for _, noise in ipairs(recentNoises) do
+			if noise.Source and targetFilterPredicate and not targetFilterPredicate(noise.Source) then
+				continue
+			end
 			local noiseDist = (noise.Position - monsterPos).Magnitude
 			if noiseDist <= noise.Radius then
 				context.InvestigatePosition = noise.Position

@@ -77,9 +77,17 @@ function ObjectiveService.HandlePlayerElimination(player: Player)
 	-- 1. If player was carrying a cargo crate, drop it on the ground at their position
 	if carryingCargo[player.UserId] then
 		local carriedBox = carryingCargo[player.UserId]
-		local dropPos = if player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-			then (player.Character.HumanoidRootPart :: BasePart).Position
-			else (GameConfig.World.ActiveStationOffset + Vector3.new(20, 3, 0))
+		local stationOffset = GameConfig.World.ActiveStationOffset
+		local defaultStationDrop = stationOffset + Vector3.new(20, 3, 0)
+
+		local dropPos = defaultStationDrop
+		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			local charPos = (player.Character.HumanoidRootPart :: BasePart).Position
+			-- Ensure drop position is within station boundaries rather than safe Hub carriage
+			if (charPos - stationOffset).Magnitude < 350 then
+				dropPos = charPos
+			end
+		end
 
 		carriedBox:Destroy()
 		carryingCargo[player.UserId] = nil
