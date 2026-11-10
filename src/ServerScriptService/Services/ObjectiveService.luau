@@ -116,6 +116,11 @@ function ObjectiveService.HandlePlayerElimination(player: Player)
 			prompt.Parent = droppedCrate
 			table.insert(spawnedEntities, droppedCrate)
 			log:Info("Dropped cargo crate spawned for teammates", { Player = player.Name, Position = tostring(dropPos) })
+		else
+			log:Warn("ActiveStation runtime unavailable; destroyed carried cargo without dropping crate in world", {
+				Player = player.Name,
+				UserId = player.UserId,
+			})
 		end
 	end
 

@@ -53,7 +53,11 @@ function MonsterService.Init()
 		if roundServiceLoaded and RoundService then
 			return RoundService.IsPlayerActiveInExpedition(player)
 		end
-		return true
+		log:Error("Failed to require RoundService in monster target filter; failing closed (targeting rejected)", {
+			Player = player.Name,
+			Error = tostring(RoundService),
+		})
+		return false
 	end)
 
 	HollowAI.OnPlayerAttacked:Connect(function(player: Player)

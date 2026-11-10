@@ -1411,6 +1411,8 @@ def test_multiplayer_lifecycle_and_targeting_resilience():
         "MonsterService must configure HollowAI target filter"
     assert "RoundService.IsPlayerActiveInExpedition(player)" in monster_svc, \
         "MonsterService must filter monster targets through RoundService.IsPlayerActiveInExpedition"
+    assert "failing closed (targeting rejected)" in monster_svc, \
+        "MonsterService target filter must fail closed if RoundService is unavailable"
 
     # 3. ObjectiveService disconnect cleanup & prompt.Enabled race condition guard
     assert "Players.PlayerRemoving:Connect(function(player: Player)" in obj_svc, \
@@ -1419,6 +1421,8 @@ def test_multiplayer_lifecycle_and_targeting_resilience():
         "ObjectiveService must handle player elimination/drop on PlayerRemoving"
     assert "if not prompt.Enabled then" in obj_svc, \
         "ObjectiveService must check prompt.Enabled before executing interaction to prevent concurrent race conditions"
+    assert "ActiveStation runtime unavailable; destroyed carried cargo" in obj_svc, \
+        "ObjectiveService must safely log and handle cargo cleanup when ActiveStation runtime is unavailable"
 
 
 # =========================================================================
