@@ -123,22 +123,37 @@ function MovementService.Init()
 		MovementService.SetSprint(player, active)
 	end)
 
+	local function trackCharacter(player: Player, character: Model)
+		local root = character:WaitForChild("HumanoidRootPart", 5) :: BasePart?
+		local hum = character:WaitForChild("Humanoid", 5) :: Humanoid?
+		if hum then
+			hum.WalkSpeed = GameConfig.Player.WalkSpeed
+		end
+		if root then
+			lastPositions[player.UserId] = root.Position
+			lastSafePositions[player.UserId] = root.Position
+			lastTimes[player.UserId] = os.clock()
+			teleportGraceUntil[player.UserId] = os.clock() + 3.0
+			violationCounts[player.UserId] = 0
+		end
+	end
+
 	Players.PlayerAdded:Connect(function(player)
 		player.CharacterAdded:Connect(function(character)
-			local root = character:WaitForChild("HumanoidRootPart", 5) :: BasePart?
-			local hum = character:WaitForChild("Humanoid", 5) :: Humanoid?
-			if hum then
-				hum.WalkSpeed = GameConfig.Player.WalkSpeed
-			end
-			if root then
-				lastPositions[player.UserId] = root.Position
-				lastSafePositions[player.UserId] = root.Position
-				lastTimes[player.UserId] = os.clock()
-				teleportGraceUntil[player.UserId] = os.clock() + 2.0
-				violationCounts[player.UserId] = 0
-			end
+			trackCharacter(player, character)
 		end)
 	end)
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then
+			task.spawn(function()
+				trackCharacter(player, player.Character)
+			end)
+		end
+		player.CharacterAdded:Connect(function(character)
+			trackCharacter(player, character)
+		end)
+	end
 
 	Players.PlayerRemoving:Connect(function(player)
 		local userId = player.UserId
@@ -273,19 +288,25 @@ function MovementService.IsPlayerSprinting(player: Player): boolean
 	return playerSprinting[player.UserId] or false
 end
 
-function MovementService.RegisterTeleport(player: Player, duration: number?)
-	local grace = duration or 2.0
+function MovementService.RegisterTeleport(player: Player, duration: number?, destination: Vector3?)
+	local grace = duration or 3.5
 	local userId = player.UserId
 	teleportGraceUntil[userId] = os.clock() + grace
 
-	local character = player.Character
-	if character then
-		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local targetPos = destination
+	if not targetPos then
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
-			lastPositions[userId] = root.Position
-			lastSafePositions[userId] = root.Position
-			lastTimes[userId] = os.clock()
+			targetPos = root.Position
 		end
+	end
+
+	if targetPos then
+		lastPositions[userId] = targetPos
+		lastSafePositions[userId] = targetPos
+		lastTimes[userId] = os.clock()
+		violationCounts[userId] = 0
 	end
 end
 

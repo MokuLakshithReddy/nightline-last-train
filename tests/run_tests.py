@@ -1223,6 +1223,31 @@ def test_station_platform_portal():
     assert "station = runtime and runtime:FindFirstChild(\"ActiveStation\")" in station_content, "IsInsideExtractionZone must query ActiveStation"
 
 
+@test_case("Teleport registration destination tracking and Studio profile recovery (FIX-T40)")
+def test_teleport_registration_and_studio_profile_recovery():
+    with open("src/ServerScriptService/Services/MovementService.luau", "r", encoding="utf-8") as f:
+        mv_content = f.read()
+    with open("src/ServerScriptService/Services/RoundService.luau", "r", encoding="utf-8") as f:
+        rd_content = f.read()
+    with open("src/ServerScriptService/Services/PlayerDataService.luau", "r", encoding="utf-8") as f:
+        pd_content = f.read()
+
+    # MovementService destination tracking
+    assert "function MovementService.RegisterTeleport(player: Player, duration: number?, destination: Vector3?)" in mv_content, \
+        "RegisterTeleport must accept optional destination Vector3"
+    assert "lastSafePositions[userId] = targetPos" in mv_content, "RegisterTeleport must align lastSafePositions with target destination"
+    assert "for _, player in ipairs(Players:GetPlayers()) do" in mv_content, "MovementService.Init must track existing players"
+
+    # RoundService passes destination to RegisterTeleport
+    assert "MovementService.RegisterTeleport(player, 3.5, destination)" in rd_content, \
+        "RoundService.teleportPlayer must pass target destination to RegisterTeleport"
+
+    # PlayerDataService Studio recovery and existing player initialization
+    assert "for _, player in ipairs(Players:GetPlayers()) do" in pd_content, "PlayerDataService.Init must load existing players"
+    assert "isStudioMockMode = true" in pd_content, "PlayerDataService must support isStudioMockMode"
+    assert "loadFailed[userId] = false" in pd_content, "Studio mock recovery must reset loadFailed"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1260,6 +1285,7 @@ def main():
     test_datastore_live_evidence_integrity()
     test_mobile_gamepad_qa_integrity()
     test_station_platform_portal()
+    test_teleport_registration_and_studio_profile_recovery()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

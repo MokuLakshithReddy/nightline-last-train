@@ -84,7 +84,7 @@ local function teleportPlayer(player: Player, destination: Vector3)
 	if character then
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
-			MovementService.RegisterTeleport(player, 2.5)
+			MovementService.RegisterTeleport(player, 3.5, destination)
 			root.CFrame = CFrame.new(destination)
 			root.AssemblyLinearVelocity = Vector3.zero
 		end
