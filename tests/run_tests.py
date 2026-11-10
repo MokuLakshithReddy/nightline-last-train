@@ -1293,6 +1293,22 @@ def test_objective_contract_and_ui_safety():
         "UIController must safeguard against nil progress or targetProgress before string.format"
 
 
+@test_case("Studio DataStore mock mode initialization and audio playback resilience (FIX-T43)")
+def test_studio_persistence_initialization_and_audio_resilience():
+    with open("src/ServerScriptService/Services/PlayerDataService.luau", "r", encoding="utf-8") as f:
+        player_data = f.read()
+    with open("src/StarterPlayer/StarterPlayerScripts/Controllers/AudioController.luau", "r", encoding="utf-8") as f:
+        audio_ctrl = f.read()
+
+    # 1. PlayerDataService initializes isStudioMockMode from RunService:IsStudio() directly
+    assert "local isStudioMockMode: boolean = RunService:IsStudio()" in player_data, \
+        "isStudioMockMode must be initialized to RunService:IsStudio() to prevent early LoadProfile race conditions"
+
+    # 2. AudioController wraps plays and volume safely
+    assert "local function safePlay(sound: Sound?)" in audio_ctrl, "AudioController must provide safePlay wrapper"
+    assert "local function setVolume(sound: Sound?, volume: number)" in audio_ctrl, "AudioController must provide setVolume helper"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1333,6 +1349,7 @@ def main():
     test_teleport_registration_and_studio_profile_recovery()
     test_client_server_teleport_sync()
     test_objective_contract_and_ui_safety()
+    test_studio_persistence_initialization_and_audio_resilience()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

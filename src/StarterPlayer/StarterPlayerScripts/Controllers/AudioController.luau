@@ -35,6 +35,18 @@ local function createSound(name: string, soundId: string, volume: number, looped
 	return sound
 end
 
+local function safePlay(sound: Sound?)
+	if not sound then return end
+	pcall(function()
+		sound:Play()
+	end)
+end
+
+local function setVolume(sound: Sound?, volume: number)
+	if not sound then return end
+	sound.Volume = math.clamp(volume, 0, 1)
+end
+
 function AudioController.Init()
 	log:Info("Initializing dynamic audio controller...")
 
@@ -44,7 +56,7 @@ function AudioController.Init()
 	heartbeatSound = createSound("ProximityHeartbeat", "rbxassetid://9114224095", 0.0, true)
 	alarmSound = createSound("ExtractionAlarm", "rbxassetid://9114222485", 0.7, false)
 
-	trainRumbleSound:Play()
+	safePlay(trainRumbleSound)
 
 	-- State-based audio transitions
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -52,29 +64,27 @@ function AudioController.Init()
 
 	roundStateRemote.OnClientEvent:Connect(function(state: string)
 		if state == "WAITING" or state == "INTERMISSION" or state == "BOARDING" then
-			if trainRumbleSound then trainRumbleSound.Volume = 0.35 end
-			if stationAmbienceSound then stationAmbienceSound.Volume = 0.1 end
-			if heartbeatSound then heartbeatSound.Volume = 0 end
+			setVolume(trainRumbleSound, 0.35)
+			setVolume(stationAmbienceSound, 0.1)
+			setVolume(heartbeatSound, 0)
 
 		elseif state == "TRAVEL" then
-			if trainRumbleSound then trainRumbleSound.Volume = 0.8 end
-			if stationAmbienceSound then stationAmbienceSound.Volume = 0.0 end
+			setVolume(trainRumbleSound, 0.8)
+			setVolume(stationAmbienceSound, 0.0)
 
 		elseif state == "EXPLORATION" then
-			if trainRumbleSound then trainRumbleSound.Volume = 0.05 end
-			if stationAmbienceSound then
-				stationAmbienceSound.Volume = 0.65
-				stationAmbienceSound:Play()
-			end
+			setVolume(trainRumbleSound, 0.05)
+			setVolume(stationAmbienceSound, 0.65)
+			safePlay(stationAmbienceSound)
 
 		elseif state == "EXTRACTION" then
-			if alarmSound then alarmSound:Play() end
-			if stationAmbienceSound then stationAmbienceSound.Volume = 0.8 end
+			safePlay(alarmSound)
+			setVolume(stationAmbienceSound, 0.8)
 
 		elseif state == "RETURN" or state == "RESULTS" then
-			if heartbeatSound then heartbeatSound.Volume = 0 end
-			if trainRumbleSound then trainRumbleSound.Volume = 0.6 end
-			if stationAmbienceSound then stationAmbienceSound.Volume = 0.1 end
+			setVolume(heartbeatSound, 0)
+			setVolume(trainRumbleSound, 0.6)
+			setVolume(stationAmbienceSound, 0.1)
 		end
 	end)
 
@@ -93,15 +103,15 @@ function AudioController.Init()
 				local dist = (playerPos - monsterPos).Magnitude
 
 				if dist < 60 and heartbeatSound then
-					if not heartbeatSound.IsPlaying then heartbeatSound:Play() end
+					safePlay(heartbeatSound)
 					local intensity = math.clamp(1.0 - (dist / 60), 0.1, 1.0)
 					heartbeatSound.Volume = intensity * 0.9 * AudioController.SFXVolume
 					heartbeatSound.PlaybackSpeed = 1.0 + (intensity * 0.5)
 				elseif heartbeatSound and heartbeatSound.Volume > 0 then
-					heartbeatSound.Volume = 0
+					setVolume(heartbeatSound, 0)
 				end
 			elseif heartbeatSound and heartbeatSound.Volume > 0 then
-				heartbeatSound.Volume = 0
+				setVolume(heartbeatSound, 0)
 			end
 		end
 	end)

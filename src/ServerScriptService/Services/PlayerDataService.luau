@@ -38,7 +38,7 @@ local DefaultData: GameTypes.PlayerProfile = {
 
 local dataStore: DataStore? = nil
 local dataStoreAvailable: boolean = false
-local isStudioMockMode: boolean = false
+local isStudioMockMode: boolean = RunService:IsStudio()
 local profilesCache: { [number]: GameTypes.PlayerProfile } = {}
 local isDirty: { [number]: boolean } = {}
 local loadFailed: { [number]: boolean } = {}
