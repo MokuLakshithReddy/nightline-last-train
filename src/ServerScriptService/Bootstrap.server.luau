@@ -27,6 +27,7 @@ local REQUIRED_REMOTES = {
 	"ToggleFlashlight",
 	"ThrowFlare",
 	"RequestSprint",
+	"TeleportClient",
 }
 
 for _, remoteName in ipairs(REQUIRED_REMOTES) do

@@ -1248,6 +1248,27 @@ def test_teleport_registration_and_studio_profile_recovery():
     assert "loadFailed[userId] = false" in pd_content, "Studio mock recovery must reset loadFailed"
 
 
+@test_case("Client-server teleport synchronization and remote contract (FIX-T41)")
+def test_client_server_teleport_sync():
+    with open("src/ServerScriptService/Bootstrap.server.luau", "r", encoding="utf-8") as f:
+        boot_server = f.read()
+    with open("src/ServerScriptService/Services/RoundService.luau", "r", encoding="utf-8") as f:
+        round_server = f.read()
+    with open("src/StarterPlayer/StarterPlayerScripts/ClientBootstrap.client.luau", "r", encoding="utf-8") as f:
+        client_boot = f.read()
+
+    # Remote declaration
+    assert '"TeleportClient"' in boot_server, "Bootstrap.server.luau must declare TeleportClient remote"
+    
+    # Server firing
+    assert "teleportRemote:FireClient(player, destination)" in round_server, "RoundService must fire TeleportClient"
+    assert "character:PivotTo(CFrame.new(destination))" in round_server, "RoundService must call PivotTo on character"
+
+    # Client handling
+    assert 'remotes:WaitForChild("TeleportClient")' in client_boot, "ClientBootstrap must listen on TeleportClient"
+    assert "char:PivotTo(CFrame.new(destination))" in client_boot, "ClientBootstrap must pivot character on client event"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1286,6 +1307,7 @@ def main():
     test_mobile_gamepad_qa_integrity()
     test_station_platform_portal()
     test_teleport_registration_and_studio_profile_recovery()
+    test_client_server_teleport_sync()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

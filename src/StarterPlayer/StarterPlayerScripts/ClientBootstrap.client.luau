@@ -25,5 +25,22 @@ CameraController.Init()
 InteractionController.Init()
 AudioController.Init()
 
+-- Synchronize authoritative server teleportation directly onto client character physics
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+local remotes = ReplicatedStorage:WaitForChild("Remotes")
+local teleportRemote = remotes:WaitForChild("TeleportClient") :: RemoteEvent
+teleportRemote.OnClientEvent:Connect(function(destination: Vector3)
+	local char = localPlayer.Character
+	if char then
+		char:PivotTo(CFrame.new(destination))
+		local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if root then
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end)
+
 log:Info("NIGHTLINE client ready.")
 
