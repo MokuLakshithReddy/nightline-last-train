@@ -1309,6 +1309,24 @@ def test_studio_persistence_initialization_and_audio_resilience():
     assert "local function setVolume(sound: Sound?, volume: number)" in audio_ctrl, "AudioController must provide setVolume helper"
 
 
+@test_case("Monster spawn station parameter propagation and dynamic logging (FIX-T44)")
+def test_monster_spawn_station_parameter_propagation():
+    with open("src/ServerScriptService/Services/MonsterService.luau", "r", encoding="utf-8") as f:
+        monster_svc = f.read()
+    with open("src/ServerScriptService/Services/RoundService.luau", "r", encoding="utf-8") as f:
+        round_svc = f.read()
+
+    # 1. MonsterService.SpawnMonster accepts stationId parameter and logs dynamically
+    assert "function MonsterService.SpawnMonster(stationId: string?)" in monster_svc, \
+        "MonsterService.SpawnMonster must accept optional stationId parameter"
+    assert "targetStationName = stationId or \"Active Station\"" in monster_svc, \
+        "MonsterService must resolve targetStationName dynamically"
+
+    # 2. RoundService passes selectedStationId to SpawnMonster
+    assert "MonsterService.SpawnMonster(selectedStationId)" in round_svc, \
+        "RoundService must pass selectedStationId to MonsterService.SpawnMonster"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1350,6 +1368,7 @@ def main():
     test_client_server_teleport_sync()
     test_objective_contract_and_ui_safety()
     test_studio_persistence_initialization_and_audio_resilience()
+    test_monster_spawn_station_parameter_propagation()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

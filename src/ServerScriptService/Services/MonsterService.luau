@@ -164,7 +164,7 @@ function MonsterService.BuildMonsterModel(): Model
 	return model
 end
 
-function MonsterService.SpawnMonster()
+function MonsterService.SpawnMonster(stationId: string?)
 	local success, err = pcall(function()
 		MonsterService.DespawnMonster()
 
@@ -181,7 +181,8 @@ function MonsterService.SpawnMonster()
 			runtime.Parent = world
 		end
 
-		log:Info("Spawning The Hollow into Station 001...")
+		local targetStationName = stationId or "Active Station"
+		log:Info(string.format("Spawning The Hollow into %s...", targetStationName))
 
 		local model = MonsterService.BuildMonsterModel()
 		-- Parent to Workspace hierarchy FIRST before setting network ownership
@@ -302,7 +303,7 @@ function MonsterService.SpawnMonster()
 			end
 		end)
 
-		log:Info("The Hollow is actively patrolling Station 001.")
+		log:Info(string.format("The Hollow is actively patrolling %s.", targetStationName))
 	end)
 
 	if not success then
