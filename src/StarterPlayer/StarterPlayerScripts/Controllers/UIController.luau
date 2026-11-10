@@ -129,7 +129,7 @@ function UIController.Init()
 
 	objectiveRemote.OnClientEvent:Connect(function(objectiveId: string, progress: number, targetProgress: number, isComplete: boolean)
 		if not objectiveFrame or not objectiveTitle or not objectiveProgress then return end
-		if objectiveId == "" then
+		if not objectiveId or objectiveId == "" then
 			objectiveFrame.Visible = false
 			return
 		end
@@ -139,7 +139,9 @@ function UIController.Init()
 			objectiveProgress.Text = "OBJECTIVE SECURED (Return to Train)"
 			objectiveProgress.TextColor3 = Color3.fromRGB(80, 240, 120)
 		else
-			objectiveProgress.Text = string.format("Progress: %d / %d", progress, targetProgress)
+			local cur = progress or 0
+			local tgt = targetProgress or 1
+			objectiveProgress.Text = string.format("Progress: %d / %d", cur, tgt)
 			objectiveProgress.TextColor3 = Color3.fromRGB(220, 220, 230)
 		end
 	end)

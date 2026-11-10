@@ -335,7 +335,7 @@ function ObjectiveService.StartMission(missionType: GameTypes.MissionType?): Gam
 		Title = def.Title,
 		Description = def.Description,
 		Progress = 0,
-		TargetProgress = def.TargetProgress,
+		TargetProgress = (def :: any).TargetProgress or (def :: any).TargetCount or 1,
 		IsComplete = false,
 	}
 
@@ -555,9 +555,9 @@ function ObjectiveService.Broadcast()
 	if not activeMission or not objectiveUpdatedRemote then return end
 	objectiveUpdatedRemote:FireAllClients(
 		activeMission.Id,
-		activeMission.Progress,
-		activeMission.TargetProgress,
-		activeMission.IsComplete
+		activeMission.Progress or 0,
+		activeMission.TargetProgress or 1,
+		activeMission.IsComplete == true
 	)
 end
 
