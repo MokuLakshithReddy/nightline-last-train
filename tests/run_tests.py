@@ -1322,9 +1322,15 @@ def test_monster_spawn_station_parameter_propagation():
     assert "targetStationName = stationId or \"Active Station\"" in monster_svc, \
         "MonsterService must resolve targetStationName dynamically"
 
-    # 2. RoundService passes selectedStationId to SpawnMonster
-    assert "MonsterService.SpawnMonster(selectedStationId)" in round_svc, \
-        "RoundService must pass selectedStationId to MonsterService.SpawnMonster"
+    # 2. RoundService passes its declared, authoritative station state to MonsterService.
+    assert "local currentStationId: string = GameConfig.Round.DefaultStationId" in round_svc, \
+        "RoundService must declare currentStationId as its authoritative station state"
+    assert "currentStationId = RoundService.TallyDestinationVotes()" in round_svc, \
+        "RoundService must update currentStationId from the destination vote tally"
+    assert "MonsterService.SpawnMonster(currentStationId)" in round_svc, \
+        "RoundService must pass the declared currentStationId to MonsterService"
+    assert "MonsterService.SpawnMonster(selectedStationId)" not in round_svc, \
+        "RoundService must not reference the undefined selectedStationId variable"
 
 
 # =========================================================================

@@ -383,7 +383,7 @@ function RoundService.StartGameLoop()
 
 					-- Protected monster spawn call to prevent NPC errors from breaking the round loop
 					local monsterOk, monsterErr = pcall(function()
-						MonsterService.SpawnMonster(selectedStationId)
+						MonsterService.SpawnMonster(currentStationId)
 					end)
 					if not monsterOk then
 						log:Error("Failed to spawn monster in EXPLORATION: " .. tostring(monsterErr))
