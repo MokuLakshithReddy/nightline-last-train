@@ -49,6 +49,7 @@ local cachedProfile: GameTypes.PlayerProfile? = nil
 local mySelectedVote: string? = nil
 local latestVoteSummary: { [string]: any }? = nil
 local isVotingPhase: boolean = false
+local isLocalPlayerEliminated: boolean = false
 
 local function formatTime(seconds: number): string
 	local s = math.max(0, math.floor(seconds))
@@ -78,9 +79,14 @@ function UIController.Init()
 	local inventoryRemote = remotes:WaitForChild("InventoryUpdated") :: RemoteEvent
 	local profileRemote = remotes:WaitForChild("ProfileUpdated") :: RemoteEvent
 	local destinationVotesRemote = remotes:WaitForChild("DestinationVotesUpdated") :: RemoteEvent
+	local playerStatusRemote = remotes:FindFirstChild("PlayerStatusUpdated") :: RemoteEvent?
 
 	roundStateRemote.OnClientEvent:Connect(function(state: string, _serverTime: number, phaseEndsAt: number, _stationId: string)
 		currentPhaseEndsAt = phaseEndsAt
+		if state == "WAITING" or state == "RESULTS" then
+			isLocalPlayerEliminated = false
+		end
+
 		if timerLabel then
 			if currentPhaseEndsAt > 0 then
 				local remaining = UIController.CalculateTimeRemaining(currentPhaseEndsAt)
@@ -90,20 +96,25 @@ function UIController.Init()
 			end
 		end
 		if stateLabel then
-			stateLabel.Text = string.upper(state)
-			if state == "EXPLORATION" then
-				stateLabel.TextColor3 = Color3.fromRGB(240, 200, 80)
-			elseif state == "EXTRACTION" then
+			if isLocalPlayerEliminated and (state == "EXPLORATION" or state == "EXTRACTION") then
+				stateLabel.Text = "ELIMINATED (HUB)"
 				stateLabel.TextColor3 = Color3.fromRGB(255, 70, 70)
-			elseif state == "RETURN" or state == "RESULTS" then
-				stateLabel.TextColor3 = Color3.fromRGB(80, 220, 120)
 			else
-				stateLabel.TextColor3 = Color3.fromRGB(200, 210, 225)
+				stateLabel.Text = string.upper(state)
+				if state == "EXPLORATION" then
+					stateLabel.TextColor3 = Color3.fromRGB(240, 200, 80)
+				elseif state == "EXTRACTION" then
+					stateLabel.TextColor3 = Color3.fromRGB(255, 70, 70)
+				elseif state == "RETURN" or state == "RESULTS" then
+					stateLabel.TextColor3 = Color3.fromRGB(80, 220, 120)
+				else
+					stateLabel.TextColor3 = Color3.fromRGB(200, 210, 225)
+				end
 			end
 		end
 
 		if objectiveFrame then
-			objectiveFrame.Visible = (state == "EXPLORATION" or state == "EXTRACTION")
+			objectiveFrame.Visible = (state == "EXPLORATION" or state == "EXTRACTION") and not isLocalPlayerEliminated
 		end
 
 		local inPrep = (state == "WAITING" or state == "INTERMISSION" or state == "BOARDING")
@@ -122,6 +133,27 @@ function UIController.Init()
 			end
 		end
 	end)
+
+	if playerStatusRemote then
+		playerStatusRemote.OnClientEvent:Connect(function(userId: number, status: string, reason: string?)
+			if userId == localPlayer.UserId then
+				if status == "Eliminated" then
+					isLocalPlayerEliminated = true
+					UIController.ShowNotification(
+						string.format("ELIMINATED: Caught in the darkness (%s)! Returned to safe Hub carriage.", reason or "Threat"),
+						"Alert"
+					)
+					if stateLabel then
+						stateLabel.Text = "ELIMINATED (HUB)"
+						stateLabel.TextColor3 = Color3.fromRGB(255, 70, 70)
+					end
+					if objectiveFrame then
+						objectiveFrame.Visible = false
+					end
+				end
+			end
+		end)
+	end
 
 	destinationVotesRemote.OnClientEvent:Connect(function(summary: { [string]: any })
 		UIController.UpdateDestinationVotes(summary)

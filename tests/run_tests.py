@@ -1333,6 +1333,62 @@ def test_monster_spawn_station_parameter_propagation():
         "RoundService must not reference the undefined selectedStationId variable"
 
 
+@test_case("Player elimination lifecycle, team wipe transition, and cargo drop resilience (FIX-T45)")
+def test_player_elimination_lifecycle_and_team_wipe():
+    with open("src/ServerScriptService/Services/RoundService.luau", "r", encoding="utf-8") as f:
+        round_svc = f.read()
+    with open("src/ServerScriptService/Services/MonsterService.luau", "r", encoding="utf-8") as f:
+        monster_svc = f.read()
+    with open("src/ServerScriptService/Services/ObjectiveService.luau", "r", encoding="utf-8") as f:
+        obj_svc = f.read()
+    with open("src/ServerScriptService/Services/EquipmentService.luau", "r", encoding="utf-8") as f:
+        equip_svc = f.read()
+    with open("src/StarterPlayer/StarterPlayerScripts/Controllers/UIController.luau", "r", encoding="utf-8") as f:
+        ui_ctrl = f.read()
+
+    # 1. RoundService authoritative elimination methods & team wipe transition
+    assert "function RoundService.EliminatePlayer(player: Player, reason: string?)" in round_svc, \
+        "RoundService must export authoritative EliminatePlayer method"
+    assert "function RoundService.IsPlayerEliminated(player: Player): boolean" in round_svc, \
+        "RoundService must export IsPlayerEliminated query"
+    assert "function RoundService.IsPlayerActiveInExpedition(player: Player): boolean" in round_svc, \
+        "RoundService must export IsPlayerActiveInExpedition check"
+    assert "eliminatedPlayers[player.UserId] = true" in round_svc, \
+        "RoundService must register eliminated status in eliminatedPlayers table"
+    assert "if not anyAlive and (currentState == \"EXPLORATION\" or currentState == \"EXTRACTION\") then" in round_svc, \
+        "RoundService must detect when all expedition players are eliminated"
+    assert "RoundService.TransitionTo(\"RESULTS\")" in round_svc, \
+        "RoundService must transition immediately to RESULTS on team wipe"
+    assert "humanoid.Died:Connect" in round_svc, \
+        "RoundService must listen to Humanoid.Died to eliminate players on character death"
+
+    # 2. MonsterService delegates player attack to RoundService & excludes eliminated players from noise
+    assert "RoundService.EliminatePlayer(player, \"TheHollow\")" in monster_svc, \
+        "MonsterService must delegate creature attacks to RoundService.EliminatePlayer"
+    assert "RoundService.IsPlayerEliminated(player)" in monster_svc, \
+        "MonsterService must exclude eliminated players in Hub from generating monster noise"
+
+    # 3. ObjectiveService cargo drop & prompt guard
+    assert "function ObjectiveService.HandlePlayerElimination(player: Player)" in obj_svc, \
+        "ObjectiveService must provide HandlePlayerElimination method"
+    assert "DroppedCargoCrate" in obj_svc and "PickUpCargoPrompt" in obj_svc, \
+        "ObjectiveService must drop cargo crate with pickup prompt for living teammates"
+    assert "not RoundService.IsPlayerActiveInExpedition(player)" in obj_svc, \
+        "ObjectiveService must reject prompt interactions from eliminated players"
+
+    # 4. EquipmentService guards
+    assert "not RoundService.IsPlayerActiveInExpedition(player)" in equip_svc, \
+        "EquipmentService must guard equipment usage against eliminated players"
+
+    # 5. UIController receives player status & updates HUD
+    assert "playerStatusRemote.OnClientEvent:Connect" in ui_ctrl, \
+        "UIController must listen to PlayerStatusUpdated remote"
+    assert "isLocalPlayerEliminated = true" in ui_ctrl, \
+        "UIController must track local player elimination state"
+    assert "ELIMINATED (HUB)" in ui_ctrl, \
+        "UIController must present clear ELIMINATED (HUB) banner/label"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1375,6 +1431,7 @@ def main():
     test_objective_contract_and_ui_safety()
     test_studio_persistence_initialization_and_audio_resilience()
     test_monster_spawn_station_parameter_propagation()
+    test_player_elimination_lifecycle_and_team_wipe()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")

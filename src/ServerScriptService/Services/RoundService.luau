@@ -24,6 +24,7 @@ local AnalyticsService = require(script.Parent:WaitForChild("AnalyticsService"))
 local roundStateRemote: RemoteEvent? = nil
 local notificationRemote: RemoteEvent? = nil
 local destinationVotesRemote: RemoteEvent? = nil
+local playerStatusRemote: RemoteEvent? = nil
 
 local currentState: GameTypes.RoundState = "WAITING"
 local phaseEndsAt: number = 0
@@ -118,8 +119,24 @@ function RoundService.Init()
 	roundStateRemote = remotes:WaitForChild("RoundStateChanged") :: RemoteEvent
 	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
 	destinationVotesRemote = remotes:FindFirstChild("DestinationVotesUpdated") :: RemoteEvent?
+	playerStatusRemote = remotes:FindFirstChild("PlayerStatusUpdated") :: RemoteEvent?
 
-	Players.PlayerAdded:Connect(function(player)
+	local function hookCharacter(player: Player, character: Model)
+		local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
+		if humanoid then
+			humanoid.Died:Connect(function()
+				if currentState == "EXPLORATION" or currentState == "EXTRACTION" then
+					if RoundService.IsPlayerActiveInExpedition(player) then
+						RoundService.EliminatePlayer(player, "EnvironmentalHazard")
+					end
+				end
+			end)
+		end
+		task.wait(0.2)
+		teleportToHub(player)
+	end
+
+	local function onPlayerAdded(player: Player)
 		if roundStateRemote then
 			roundStateRemote:FireClient(player, currentState, Workspace:GetServerTimeNow(), phaseEndsAt, currentStationId)
 		end
@@ -128,11 +145,19 @@ function RoundService.Init()
 			destinationVotesRemote:FireClient(player, RoundService.GetDestinationVotesSummary())
 		end
 
-		player.CharacterAdded:Connect(function()
-			task.wait(0.2)
-			teleportToHub(player)
+		player.CharacterAdded:Connect(function(character)
+			hookCharacter(player, character)
 		end)
-	end)
+
+		if player.Character then
+			hookCharacter(player, player.Character)
+		end
+	end
+
+	Players.PlayerAdded:Connect(onPlayerAdded)
+	for _, p in ipairs(Players:GetPlayers()) do
+		onPlayerAdded(p)
+	end
 
 	Players.PlayerRemoving:Connect(function(player)
 		activeRoster[player.UserId] = nil
@@ -311,6 +336,78 @@ end
 
 function RoundService.IsPlayerInRoster(player: Player): boolean
 	return activeRoster[player.UserId] ~= nil
+end
+
+function RoundService.IsPlayerEliminated(player: Player): boolean
+	return eliminatedPlayers[player.UserId] == true
+end
+
+function RoundService.IsPlayerActiveInExpedition(player: Player): boolean
+	return activeRoster[player.UserId] ~= nil and eliminatedPlayers[player.UserId] ~= true
+end
+
+function RoundService.GetEliminatedPlayers(): { [number]: boolean }
+	return table.clone(eliminatedPlayers)
+end
+
+function RoundService.EliminatePlayer(player: Player, reason: string?)
+	if not activeRoster[player.UserId] then
+		log:Warn("Cannot eliminate player not in active roster", { Player = player.Name })
+		return
+	end
+	if eliminatedPlayers[player.UserId] then
+		log:Warn("Player is already eliminated", { Player = player.Name })
+		return
+	end
+
+	eliminatedPlayers[player.UserId] = true
+	local eliminationReason = reason or "TheHollow"
+	log:Info("Player eliminated from expedition", {
+		Player = player.Name,
+		UserId = player.UserId,
+		Reason = eliminationReason,
+	})
+
+	AnalyticsService.TrackPlayerElimination(player, currentRoundId, eliminationReason)
+
+	if notificationRemote then
+		notificationRemote:FireAllClients({
+			MessageKey = "PLAYER_ELIMINATED",
+			MessageText = string.format("%s was eliminated in the station (%s)!", player.Name, eliminationReason),
+			Severity = "Alert",
+			Duration = 5,
+		})
+	end
+
+	if playerStatusRemote then
+		playerStatusRemote:FireAllClients(player.UserId, "Eliminated", eliminationReason)
+	end
+
+	-- Handle objective drop (e.g. drop carried cargo) and unbanked scrap cleanup
+	pcall(function()
+		ObjectiveService.HandlePlayerElimination(player)
+	end)
+
+	-- Teleport eliminated player back to safe Hub
+	teleportToHub(player)
+
+	-- Check if any players remain active in the expedition
+	local anyAlive = false
+	for userId in pairs(activeRoster) do
+		if not eliminatedPlayers[userId] and Players:GetPlayerByUserId(userId) then
+			anyAlive = true
+			break
+		end
+	end
+
+	if not anyAlive and (currentState == "EXPLORATION" or currentState == "EXTRACTION") then
+		log:Warn("All active expedition players eliminated; ending expedition safely")
+		broadcastNotification("All crew members eliminated! Expedition failed.", "Alert")
+		pcall(function()
+			MonsterService.DespawnMonster()
+		end)
+		RoundService.TransitionTo("RESULTS")
+	end
 end
 
 function RoundService.StartGameLoop()

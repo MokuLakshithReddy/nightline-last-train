@@ -10,7 +10,6 @@ local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild
 local MonsterConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MonsterConfig"))
 local HollowAI = require(script.Parent.Parent:WaitForChild("AI"):WaitForChild("HollowAI"))
 local MovementService = require(script.Parent:WaitForChild("MovementService"))
-local AnalyticsService = require(script.Parent:WaitForChild("AnalyticsService"))
 local Logger = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Utils"):WaitForChild("Logger"))
 local log = Logger.new("MonsterService")
 
@@ -20,9 +19,6 @@ local aiLoopThread: thread? = nil
 local noiseListeningConnection: RBXScriptConnection? = nil
 local lastNoiseTime: { [number]: number } = {}
 local lastNoisePos: { [number]: Vector3 } = {}
-
-local notificationRemote: RemoteEvent? = nil
-local playerStatusRemote: RemoteEvent? = nil
 
 local MonsterService = {}
 
@@ -43,9 +39,6 @@ end
 
 function MonsterService.Init()
 	log:Info("Initializing MonsterService...")
-	local remotes = ReplicatedStorage:WaitForChild("Remotes")
-	notificationRemote = remotes:WaitForChild("Notification") :: RemoteEvent
-	playerStatusRemote = remotes:WaitForChild("PlayerStatusUpdated") :: RemoteEvent
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		lastNoiseTime[player.UserId] = nil
@@ -57,32 +50,8 @@ function MonsterService.Init()
 
 		pcall(function()
 			local RoundService = require(script.Parent:WaitForChild("RoundService"))
-			local roundId = RoundService.GetCurrentRoundId()
-			AnalyticsService.TrackPlayerElimination(player, roundId, "TheHollow")
+			RoundService.EliminatePlayer(player, "TheHollow")
 		end)
-
-		-- Inform all clients
-		if notificationRemote then
-			notificationRemote:FireAllClients({
-				MessageKey = "PLAYER_ELIMINATED",
-				MessageText = string.format("%s was eliminated by The Hollow in the darkness!", player.Name),
-				Severity = "Alert",
-				Duration = 5,
-			})
-		end
-
-		if playerStatusRemote then
-			playerStatusRemote:FireAllClients(player.UserId, "Eliminated", "Eliminated by The Hollow")
-		end
-
-		-- Teleport eliminated player back to Hub safe carriage
-		local character = player.Character
-		if character and character:FindFirstChild("HumanoidRootPart") then
-			local root = character.HumanoidRootPart :: BasePart
-			MovementService.RegisterTeleport(player, 2.5)
-			root.CFrame = CFrame.new(GameConfig.World.HubCenter + Vector3.new(0, 3, 0))
-			root.AssemblyLinearVelocity = Vector3.zero
-		end
 	end)
 end
 
@@ -249,8 +218,8 @@ function MonsterService.SpawnMonster(stationId: string?)
 			for _, player in ipairs(Players:GetPlayers()) do
 				local userId = player.UserId
 
-				-- Exclude players outside the active station roster
-				if roundServiceLoaded and RoundService and not RoundService.IsPlayerInRoster(player) then
+				-- Exclude players outside the active station roster or already eliminated
+				if roundServiceLoaded and RoundService and (not RoundService.IsPlayerInRoster(player) or RoundService.IsPlayerEliminated(player)) then
 					lastNoisePos[userId] = nil
 					continue
 				end
