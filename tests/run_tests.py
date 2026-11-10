@@ -1269,6 +1269,30 @@ def test_client_server_teleport_sync():
     assert "char:PivotTo(CFrame.new(destination))" in client_boot, "ClientBootstrap must pivot character on client event"
 
 
+@test_case("Objective definition contract, TargetProgress parity, and UI formatting resilience (FIX-T42)")
+def test_objective_contract_and_ui_safety():
+    with open("src/ReplicatedStorage/Shared/Config/ObjectiveConfig.luau", "r", encoding="utf-8") as f:
+        obj_cfg = f.read()
+    with open("src/ServerScriptService/Services/ObjectiveService.luau", "r", encoding="utf-8") as f:
+        obj_svc = f.read()
+    with open("src/StarterPlayer/StarterPlayerScripts/Controllers/UIController.luau", "r", encoding="utf-8") as f:
+        ui_ctrl = f.read()
+
+    # 1. ObjectiveConfig provides TargetProgress for all objectives
+    assert "TargetProgress: number" in obj_cfg, "ObjectiveDefinition must declare TargetProgress"
+    assert "TargetCount = 3" in obj_cfg and "TargetProgress = 3" in obj_cfg, "RestorePower must provide TargetProgress"
+    assert "TargetCount = 2" in obj_cfg and "TargetProgress = 2" in obj_cfg, "RecoverCargo must provide TargetProgress"
+
+    # 2. ObjectiveService fallbacks
+    assert "TargetProgress = (def :: any).TargetProgress or (def :: any).TargetCount or 1" in obj_svc, \
+        "ObjectiveService must fallback safely between TargetProgress and TargetCount"
+    assert "activeMission.TargetProgress or 1" in obj_svc, "ObjectiveService.Broadcast must guard nil target progress"
+
+    # 3. UIController format string resilience
+    assert "local cur = progress or 0" in ui_ctrl and "local tgt = targetProgress or 1" in ui_ctrl, \
+        "UIController must safeguard against nil progress or targetProgress before string.format"
+
+
 # =========================================================================
 # Runner Entry Point
 # =========================================================================
@@ -1308,6 +1332,7 @@ def main():
     test_station_platform_portal()
     test_teleport_registration_and_studio_profile_recovery()
     test_client_server_teleport_sync()
+    test_objective_contract_and_ui_safety()
 
     print("--------------------------------------------------")
     print(f"Tests Completed: {PASSED + FAILED} | Passed: {PASSED} | Failed: {FAILED}")
