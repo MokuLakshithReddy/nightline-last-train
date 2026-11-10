@@ -319,6 +319,7 @@ function PlayerDataService.LoadProfile(player: Player): GameTypes.PlayerProfile
 			end
 		end
 	elseif isStudioMockMode then
+		loadFailed[userId] = false
 		profile = deepCopy(DefaultData)
 	else
 		-- Production environment without DataStore access: Fail closed!
@@ -620,6 +621,9 @@ end
 
 function PlayerDataService.SetMockMode(isMock: boolean)
 	isStudioMockMode = isMock
+	if isMock then
+		table.clear(loadFailed)
+	end
 end
 
 function PlayerDataService.SetDataStore(ds: any)
