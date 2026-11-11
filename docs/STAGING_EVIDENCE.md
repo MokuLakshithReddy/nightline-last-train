@@ -1,5 +1,7 @@
 # NIGHTLINE: LAST TRAIN — Roblox Studio Staging Evidence Record
 
+> **Historical record.** These results are dated 2026-11-10 and apply to commit `176419d50662dc6af48f5e4eb9be7437fc7bbf36`. They do not validate PR #64 (`92314432cdbe66766ab73b8737d939b56423088a`) or any later release candidate. Re-run applicable scenarios and record the tested candidate SHA before sign-off.
+
 ## 1. Test Environment & Metadata
 
 - **Tested Date:** 2026-11-10
