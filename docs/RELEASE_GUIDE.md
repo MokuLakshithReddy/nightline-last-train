@@ -53,6 +53,9 @@ Will you make it back before the last train departs?
 
 ## 3. Evidence-Based Release Verification Protocol
 
+> **Current decision: NOT APPROVED FOR PUBLIC RELEASE.** The checkboxes and evidence references below describe earlier runs. They do not clear release gates for a newer code revision. Track current requirements in [RELEASE_READINESS.md](./RELEASE_READINESS.md), and require fresh evidence for the exact candidate commit before publication.
+
+
 ### 3.1 Branch Protection & CI Quality Gates
 The repository enforces GitHub branch protection rules on `main` to prevent unvalidated changes from reaching production:
 - **Pull Request Requirement:** Direct pushes to `main` are blocked; all modifications must be proposed through pull requests.
