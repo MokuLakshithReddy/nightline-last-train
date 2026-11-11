@@ -57,11 +57,11 @@ Will you make it back before the last train departs?
 
 
 ### 3.1 Branch Protection & CI Quality Gates
-The repository enforces GitHub branch protection rules on `main` to prevent unvalidated changes from reaching production:
-- **Pull Request Requirement:** Direct pushes to `main` are blocked; all modifications must be proposed through pull requests.
-- **Required Status Checks:** The CI check `Lint, Build & Test` (from `.github/workflows/ci.yml`) is strictly required to pass before merging.
-- **Up-to-Date Branches:** Strict branch protection requires pull request branches to be up to date with `main` before merging.
-- **Stale Review Dismissal:** Automated dismissal of stale reviews upon new commits.
+Public release requires GitHub branch protection on `main`. Documentation cannot prove those settings are active; verify them in repository settings and record the result in [`RELEASE_READINESS.md`](./RELEASE_READINESS.md):
+- **Pull Request Requirement:** Confirm direct pushes to `main` are blocked and changes require pull requests.
+- **Required Status Checks:** Confirm `Lint, Build & Test` is configured as a required check and passes before merging.
+- **Up-to-Date Branches:** Confirm whether strict up-to-date enforcement is enabled.
+- **Stale Review Dismissal:** Confirm whether stale reviews are dismissed after new commits.
 
 ### 3.2 Automated CI Verification (Reproducible in CI via `.github/workflows/ci.yml`)
 The following checks are strictly automated, deterministic, and required to pass before any PR or commit merges:
