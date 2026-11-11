@@ -19,6 +19,12 @@ local playerGui = localPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
 local UIController = {}
 
+local OBJECTIVE_DISPLAY_NAMES: { [string]: string } = {
+	RestorePower = "RESTORE POWER",
+	RecoverCargo = "RECOVER LOST CARGO",
+	RepairSignal = "REPAIR THE SIGNAL",
+}
+
 -- UI Elements
 local mainScreenGui: ScreenGui? = nil
 local timerLabel: TextLabel? = nil
@@ -166,7 +172,8 @@ function UIController.Init()
 			return
 		end
 
-		objectiveTitle.Text = string.upper(objectiveId)
+		objectiveTitle.Text = OBJECTIVE_DISPLAY_NAMES[objectiveId]
+			or string.upper(string.gsub(objectiveId, "(%l)(%u)", "%1 %2"))
 		if isComplete then
 			objectiveProgress.Text = "OBJECTIVE SECURED (Return to Train)"
 			objectiveProgress.TextColor3 = Color3.fromRGB(80, 240, 120)
@@ -184,7 +191,13 @@ function UIController.Init()
 
 	inventoryRemote.OnClientEvent:Connect(function(inventory: GameTypes.PlayerInventory)
 		if slot1Label then
-			slot1Label.Text = inventory.Slot1 and ("[1] " .. inventory.Slot1.Name) or "[1] [Empty]"
+			if inventory.Slot1 then
+				slot1Label.Text = if inventory.Slot1.Id == "Flashlight"
+					then "[1] Equip / F Toggle"
+					else "[1] " .. inventory.Slot1.Name
+			else
+				slot1Label.Text = "[1] [Empty]"
+			end
 		end
 		if slot2Label then
 			slot2Label.Text = inventory.Slot2 and ("[2] " .. inventory.Slot2.Name) or "[2] [Empty]"
@@ -464,7 +477,7 @@ function UIController.BuildHUD()
 	slot1Label.Size = UDim2.new(0.5, -15, 1, -16)
 	slot1Label.BackgroundColor3 = Color3.fromRGB(26, 30, 38)
 	slot1Label.Font = Enum.Font.GothamMedium
-	slot1Label.Text = "[1] Flashlight"
+	slot1Label.Text = "[1] Equip / F Toggle"
 	slot1Label.TextColor3 = Color3.fromRGB(220, 225, 235)
 	slot1Label.TextSize = 12
 	slot1Label.Parent = inventoryBar
@@ -876,7 +889,8 @@ function UIController.UpdateDestinationVotes(summary: { [string]: any })
 		local leadingName = stationOptions[leadingStation] or leadingStation
 		local leadingCount = tally[leadingStation] or 0
 		if totalVotes > 0 then
-			voteSummaryLabel.Text = string.format("Leading: %s (%d votes) | Total: %d", leadingName, leadingCount, totalVotes)
+			local voteWord = if leadingCount == 1 then "vote" else "votes"
+			voteSummaryLabel.Text = string.format("Leading: %s (%d %s) | Total: %d", leadingName, leadingCount, voteWord, totalVotes)
 		else
 			voteSummaryLabel.Text = string.format("Default: %s | Total Votes: 0", leadingName)
 		end
@@ -938,7 +952,8 @@ function UIController.UpdateDestinationVotes(summary: { [string]: any })
 		countLabel.BackgroundTransparency = 1
 		countLabel.Font = Enum.Font.Gotham
 		local leadTag = isLeading and " ★ LEADING" or ""
-		countLabel.Text = string.format("%d votes%s", count, leadTag)
+		local voteWord = if count == 1 then "vote" else "votes"
+		countLabel.Text = string.format("%d %s%s", count, voteWord, leadTag)
 		countLabel.TextColor3 = isLeading and Color3.fromRGB(240, 200, 90) or Color3.fromRGB(150, 160, 175)
 		countLabel.TextSize = 11
 		countLabel.TextXAlignment = Enum.TextXAlignment.Left
