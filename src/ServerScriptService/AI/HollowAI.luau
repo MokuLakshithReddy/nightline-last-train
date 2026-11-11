@@ -48,6 +48,13 @@ local HollowAI = {
 	OnNoiseDetected = Signal.new(),
 }
 
+-- Target filtering predicate to ignore eliminated or safe hub players
+local targetFilterPredicate: ((Player) -> boolean)? = nil
+
+function HollowAI.SetTargetFilter(predicate: ((Player) -> boolean)?)
+	targetFilterPredicate = predicate
+end
+
 -- Noise broker
 local recentNoises: { NoiseEvent } = {}
 
@@ -112,6 +119,11 @@ local function scanForTargets(context: HollowContext): Player?
 	local closestDist = math.huge
 
 	for _, player in ipairs(Players:GetPlayers()) do
+		-- Filter out eliminated or non-active expedition players
+		if targetFilterPredicate and not targetFilterPredicate(player) then
+			continue
+		end
+
 		local character = player.Character
 		if character and character:FindFirstChild("HumanoidRootPart") then
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -149,6 +161,9 @@ local function scanForTargets(context: HollowContext): Player?
 	-- 2. Noise detection check (if no direct sight)
 	if not closestTarget then
 		for _, noise in ipairs(recentNoises) do
+			if noise.Source and targetFilterPredicate and not targetFilterPredicate(noise.Source) then
+				continue
+			end
 			local noiseDist = (noise.Position - monsterPos).Magnitude
 			if noiseDist <= noise.Radius then
 				context.InvestigatePosition = noise.Position
@@ -343,7 +358,7 @@ function HollowAI.Create(model: Model, waypoints: { Vector3 }): HollowContext
 		end,
 		Update = function(ctx: HollowContext, _dt: number)
 			local target = ctx.CurrentTarget
-			if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
+			if not target or (targetFilterPredicate and not targetFilterPredicate(target)) or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then
 				ctx.StateMachine:TransitionTo("SEARCH", ctx)
 				return
 			end
