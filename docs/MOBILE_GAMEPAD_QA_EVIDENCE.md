@@ -1,5 +1,7 @@
 # NIGHTLINE: LAST TRAIN — Mobile, Gamepad & Presentation QA Evidence Record
 
+> **Historical record.** These results are dated 2026-11-10 and apply to commit `e61dace0826e24b3ba7ba413992830eb0c9a3b2c`. They do not validate PR #64 (`92314432cdbe66766ab73b8737d939b56423088a`) or any later release candidate. Re-run any affected input and presentation scenarios after code changes.
+
 ## 1. Quality Assurance Configuration & Metadata
 
 - **Test Date:** 2026-11-10
