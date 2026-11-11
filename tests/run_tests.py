@@ -1223,6 +1223,26 @@ def test_station_platform_portal():
     assert "station = runtime and runtime:FindFirstChild(\"ActiveStation\")" in station_content, "IsInsideExtractionZone must query ActiveStation"
 
 
+@test_case("Playtest station edge guards and HUD control labels")
+def test_playtest_station_edge_and_hud_fixes():
+    with open("src/ServerScriptService/Services/StationService.luau", "r", encoding="utf-8") as f:
+        station_content = f.read()
+    with open("src/StarterPlayer/StarterPlayerScripts/Controllers/UIController.luau", "r", encoding="utf-8") as f:
+        ui_content = f.read()
+
+    assert "PlatformNorthEndGuardrail" in station_content, "North platform edge must be guarded"
+    assert "PlatformSouthEndGuardrail" in station_content, "South platform edge must be guarded"
+    assert "Vector3.new(24, 7, 1.5)" in station_content, "End barriers must span the deck and resist jumping over"
+    assert "Vector3.new(0, 4.5, 39)" in station_content, "North barrier must sit inside the deck edge"
+    assert "Vector3.new(0, 4.5, -39)" in station_content, "South barrier must sit inside the deck edge"
+
+    assert 'RestorePower = "RESTORE POWER"' in ui_content, "RestorePower objective must have readable spacing"
+    assert 'RecoverCargo = "RECOVER LOST CARGO"' in ui_content, "RecoverCargo objective must have a readable title"
+    assert '"[1] Equip / F Toggle"' in ui_content, "Flashlight controls must show the distinct equip and toggle keys"
+    assert 'if leadingCount == 1 then "vote" else "votes"' in ui_content, "Vote summary must use singular grammar"
+    assert 'if count == 1 then "vote" else "votes"' in ui_content, "Vote cards must use singular grammar"
+
+
 @test_case("Teleport registration destination tracking and Studio profile recovery (FIX-T40)")
 def test_teleport_registration_and_studio_profile_recovery():
     with open("src/ServerScriptService/Services/MovementService.luau", "r", encoding="utf-8") as f:
@@ -1464,6 +1484,7 @@ def main():
     test_datastore_live_evidence_integrity()
     test_mobile_gamepad_qa_integrity()
     test_station_platform_portal()
+    test_playtest_station_edge_and_hud_fixes()
     test_teleport_registration_and_studio_profile_recovery()
     test_client_server_teleport_sync()
     test_objective_contract_and_ui_safety()

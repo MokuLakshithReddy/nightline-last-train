@@ -104,6 +104,25 @@ function StationService.LoadStation(stationId: string?): Model
 		Enum.Material.SmoothPlastic
 	)
 
+	-- Close the exposed ends of the platform so players cannot walk straight off the deck.
+	-- The intended route into the concourse is through the side portal at x = 12.
+	createPart(
+		platformFolder,
+		"PlatformNorthEndGuardrail",
+		Vector3.new(24, 7, 1.5),
+		CFrame.new(offset + Vector3.new(0, 4.5, 39)),
+		Color3.fromRGB(220, 170, 30),
+		Enum.Material.Metal
+	)
+	createPart(
+		platformFolder,
+		"PlatformSouthEndGuardrail",
+		Vector3.new(24, 7, 1.5),
+		CFrame.new(offset + Vector3.new(0, 4.5, -39)),
+		Color3.fromRGB(220, 170, 30),
+		Enum.Material.Metal
+	)
+
 	-- Extraction Area Volume
 	local extractionZone = createPart(
 		platformFolder,
