@@ -8,7 +8,7 @@
 - **Current Status:** 🔴 Not production-ready. Automated CI passes, but release validation for the current candidate is incomplete.
 - **Codebase Health:**
   - Automated CI Workflow: Active (`.github/workflows/ci.yml`) - passing on GitHub Actions (Runs #20, #21, #22)
-  - Branch Protection: Enforced on `main` (pull request required, strict `Lint, Build & Test` CI checks required, direct pushes blocked)
+  - Branch Protection: **Unconfirmed** — the release guide describes required settings, but enforcement was not verifiable with the available repository access.
   - Luau Linter (Selene 0.32.0): 0 errors, 0 warnings across all source modules
   - Rojo Place Compilation (v7.4.4): Verified (`Nightline.rbxlx` generated cleanly)
   - Regression Test Suite (`tests/run_tests.py`): 27/27 automated test suites passing
