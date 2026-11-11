@@ -2,7 +2,10 @@
 
 ## Status Summary
 
-- **Current Status:** 🟢 Production-Ready & Full Quality Sign-Off (Automated CI, Studio Staging, Live DataStore & Cross-Platform QA Complete)
+> **Release gate:** Do not publish from this repository state. See [RELEASE_READINESS.md](./RELEASE_READINESS.md) for the current blockers. Historical evidence below is tied to older commits and is not sign-off for the current candidate.
+
+
+- **Current Status:** 🔴 Not production-ready. Automated CI passes, but release validation for the current candidate is incomplete.
 - **Codebase Health:**
   - Automated CI Workflow: Active (`.github/workflows/ci.yml`) - passing on GitHub Actions (Runs #20, #21, #22)
   - Branch Protection: Enforced on `main` (pull request required, strict `Lint, Build & Test` CI checks required, direct pushes blocked)
@@ -17,7 +20,7 @@
   - Milestone 4: Rewards, Train Upgrades, Artifacts & DataStore Persistence (Automated CI Verified)
   - Milestone 5: Mobile UX, Camera Transitions, Visual Effects & Dynamic Audio (Automated CI Verified)
   - Milestone 6: Security Hardening, Exploit Mitigation & Receipt Processing (Automated CI Verified)
-  - Milestone 7: Public Release Preparation & Staging Checklist (🟢 Complete: Studio staging, live DataStore, and mobile/gamepad QA verified)
+  - Milestone 7: Public Release Preparation & Staging Checklist (🔴 Blocked: existing manual evidence is historical and does not validate the current release candidate)
 
 ---
 
@@ -75,7 +78,7 @@ The automated regression test suite (`tests/run_tests.py`) validates core server
 | **Milestone 4** | PlayerDataService session locking, cosmetic reconciliation, fail-closed persistence, upgrades | 🟢 Complete | `PlayerDataService.luau`, `RewardConfig.luau`, `FIX-T15`, `FIX-T33` |
 | **Milestone 5** | Responsive HUD prompts, CameraController cinematic travel sweeps, audio layering, fog transitions | 🟢 Complete | `CameraController.luau` (`FIX-T20`), `InteractionController.luau` (`FIX-T21`) |
 | **Milestone 6** | Security hardening, anti-cheat (speed/fling/wall), receipt durability, concurrency locks, analytics | 🟢 Complete | `SecurityService.luau` (`FIX-T13`), `MovementService.luau` (`FIX-T17`, `FIX-T31`), `PurchaseService.luau` (`FIX-T23`, `FIX-T27`, `FIX-T32`), `AnalyticsService.luau` (`FIX-T22`, `FIX-T29`) |
-| **Milestone 7** | Release documentation, Creator Dashboard guide, automated CI pipeline, manual staging pre-flight | 🟢 Complete | `.github/workflows/ci.yml` (Runs #20, #21, #22 passing); Studio staging in `docs/STAGING_EVIDENCE.md`; Live DataStore in `docs/DATASTORE_LIVE_TEST_EVIDENCE.md`; Mobile/Gamepad in `docs/MOBILE_GAMEPAD_QA_EVIDENCE.md` |
+| **Milestone 7** | Release documentation, Creator Dashboard guide, automated CI pipeline, manual staging pre-flight | 🔴 Blocked | `.github/workflows/ci.yml` (Runs #20, #21, #22 passing); Studio staging in `docs/STAGING_EVIDENCE.md`; Live DataStore in `docs/DATASTORE_LIVE_TEST_EVIDENCE.md`; Mobile/Gamepad in `docs/MOBILE_GAMEPAD_QA_EVIDENCE.md` |
 
 ---
 
@@ -89,6 +92,6 @@ The automated regression test suite (`tests/run_tests.py`) validates core server
      3. Regression Tests: `python tests/run_tests.py` executes all test suites and generates `test_results.json`.
    - Results are automatically recorded and preserved in GitHub Actions workflow runs (e.g., Runs #20, #21, #22).
 2. **Manual Pre-Flight Staging & Studio Evidence:**
-   - **Roblox Studio Solo & Multiplayer Staging:** 🟢 **VERIFIED** — Complete 1-player and 6-player local server sessions documented in [`docs/STAGING_EVIDENCE.md`](./STAGING_EVIDENCE.md) on Roblox Studio v0.746.0.7461269.
-   - **Private Live DataStore & Purchase Testing (Issue #50):** 🟢 **VERIFIED** — Cloud DataStore persistence, session locks, and durable receipt handling documented in [`docs/DATASTORE_LIVE_TEST_EVIDENCE.md`](./DATASTORE_LIVE_TEST_EVIDENCE.md).
-   - **Mobile (iPhone 14) & Gamepad Hardware QA (Issue #51):** 🟢 **VERIFIED** — Device emulation and physical controller testing documented in [`docs/MOBILE_GAMEPAD_QA_EVIDENCE.md`](./MOBILE_GAMEPAD_QA_EVIDENCE.md).
+   - **Roblox Studio Solo & Multiplayer Staging:** 🟡 **HISTORICAL** — Earlier 1-player and 6-player sessions are documented in [`docs/STAGING_EVIDENCE.md`](./STAGING_EVIDENCE.md) on Roblox Studio v0.746.0.7461269.
+   - **Private Live DataStore & Purchase Testing (Issue #50):** 🟡 **HISTORICAL** — Earlier cloud persistence, session-lock, and receipt tests are documented in [`docs/DATASTORE_LIVE_TEST_EVIDENCE.md`](./DATASTORE_LIVE_TEST_EVIDENCE.md).
+   - **Mobile (iPhone 14) & Gamepad Hardware QA (Issue #51):** 🟡 **HISTORICAL** — Earlier device emulation and controller testing are documented in [`docs/MOBILE_GAMEPAD_QA_EVIDENCE.md`](./MOBILE_GAMEPAD_QA_EVIDENCE.md).
