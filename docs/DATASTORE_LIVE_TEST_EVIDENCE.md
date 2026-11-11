@@ -1,5 +1,7 @@
 # NIGHTLINE: LAST TRAIN — Private Live Test: DataStore Persistence & Monetization Evidence
 
+> **Historical record.** These results are dated 2026-11-10 and apply to commit `56e7b9bb54ffd5769b6ba7dd624043072c65b98d`. They do not establish persistence behavior for PR #64 (`92314432cdbe66766ab73b8737d939b56423088a`) or any later release candidate. Re-run against the exact candidate in an isolated private universe before sign-off.
+
 ## 1. Test Environment & Private Experience Setup
 
 - **Test Date:** 2026-11-10
