@@ -1,5 +1,8 @@
 # NIGHTLINE: LAST TRAIN
 
+[![Stars](https://img.shields.io/github/stars/MokuLakshithReddy/nightline-last-train?style=flat-square)](https://github.com/MokuLakshithReddy/nightline-last-train/stargazers) [![Forks](https://img.shields.io/github/forks/MokuLakshithReddy/nightline-last-train?style=flat-square)](https://github.com/MokuLakshithReddy/nightline-last-train/forks) [![Open Issues](https://img.shields.io/github/issues/MokuLakshithReddy/nightline-last-train?style=flat-square)](https://github.com/MokuLakshithReddy/nightline-last-train/issues) [![Last Commit](https://img.shields.io/github/last-commit/MokuLakshithReddy/nightline-last-train?style=flat-square)](https://github.com/MokuLakshithReddy/nightline-last-train/commits/main)
+
+
 > **"Every stop is a risk. Every return is a reward."**
 
 NIGHTLINE is a 1–6 player cooperative survival adventure on Roblox. A crew rides the last train through an abandoned city, explores dangerous stations for critical resources and mission objectives, evades a sound-hunting shadow entity known as **The Hollow**, and must make it back to the train before departure.
