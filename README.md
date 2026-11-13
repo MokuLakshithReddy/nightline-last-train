@@ -1,11 +1,37 @@
 # NIGHTLINE: LAST TRAIN
 
+[![Stars](https://img.shields.io/github/stars/MokuLakshithReddy/nightline-last-train?style=flat-square)](https://github.com/MokuLakshithReddy/nightline-last-train/stargazers) [![Forks](https://img.shields.io/github/forks/MokuLakshithReddy/nightline-last-train?style=flat-square)](https://github.com/MokuLakshithReddy/nightline-last-train/forks) [![Open Issues](https://img.shields.io/github/issues/MokuLakshithReddy/nightline-last-train?style=flat-square)](https://github.com/MokuLakshithReddy/nightline-last-train/issues) [![Last Commit](https://img.shields.io/github/last-commit/MokuLakshithReddy/nightline-last-train?style=flat-square)](https://github.com/MokuLakshithReddy/nightline-last-train/commits/main)
+
+
 > **"Every stop is a risk. Every return is a reward."**
 
 NIGHTLINE is a 1–6 player cooperative survival adventure on Roblox. A crew rides the last train through an abandoned city, explores dangerous stations for critical resources and mission objectives, evades a sound-hunting shadow entity known as **The Hollow**, and must make it back to the train before departure.
 
 ---
 
+## Gameplay loop and code layout
+
+~~~mermaid
+flowchart TD
+    A["Train hub and crew preparation"] --> B["Choose a station"]
+    B --> C["Explore and find mission items"]
+    C --> D["Complete objectives and evade The Hollow"]
+    D --> E["Return to extraction"]
+    E --> F["Board the train for the next trip"]
+    F --> A
+~~~
+
+The code is organized as a Rojo-synced Luau project:
+- Shared configuration, types, and utilities under ReplicatedStorage.
+- Server-authoritative services and AI modules under ServerScriptService.
+- Templates and world assets under ServerStorage.
+- Client presentation controllers under StarterPlayerScripts.
+
+This repository is the source project for Roblox Studio rather than a published game build. To inspect the place in Studio, use the Rojo workflow below. No verified in-game screenshots, released place link, or measured multiplayer performance results are currently included here.
+
+**Why it matters:** modular server/client boundaries make it easier to iterate on cooperative mission logic while keeping gameplay validation on the server.
+
+---
 ## 🛠️ Development Environment & Tooling
 
 This project uses a modular, file-based Roblox development architecture powered by **Rojo** and **Luau**:
