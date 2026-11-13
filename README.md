@@ -6,6 +6,29 @@ NIGHTLINE is a 1–6 player cooperative survival adventure on Roblox. A crew rid
 
 ---
 
+## Gameplay loop and code layout
+
+~~~mermaid
+flowchart TD
+    A["Train hub and crew preparation"] --> B["Choose a station"]
+    B --> C["Explore and find mission items"]
+    C --> D["Complete objectives and evade The Hollow"]
+    D --> E["Return to extraction"]
+    E --> F["Board the train for the next trip"]
+    F --> A
+~~~
+
+The code is organized as a Rojo-synced Luau project:
+- Shared configuration, types, and utilities under ReplicatedStorage.
+- Server-authoritative services and AI modules under ServerScriptService.
+- Templates and world assets under ServerStorage.
+- Client presentation controllers under StarterPlayerScripts.
+
+This repository is the source project for Roblox Studio rather than a published game build. To inspect the place in Studio, use the Rojo workflow below. No verified in-game screenshots, released place link, or measured multiplayer performance results are currently included here.
+
+**Why it matters:** modular server/client boundaries make it easier to iterate on cooperative mission logic while keeping gameplay validation on the server.
+
+---
 ## 🛠️ Development Environment & Tooling
 
 This project uses a modular, file-based Roblox development architecture powered by **Rojo** and **Luau**:
